@@ -11,6 +11,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     exit();
 }
 
+session_start();
+
 // Database connection settings
 $host = 'roscwoco0sc8w08kwsko8ko8';
 $db = 'default'; // Using the default database name
@@ -59,57 +61,9 @@ try {
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
             );
             
-            CREATE TABLE blog_posts (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                title VARCHAR(255) NOT NULL,
-                content TEXT,
-                excerpt TEXT,
-                slug VARCHAR(255) UNIQUE,
-                featured_image VARCHAR(255),
-                author_id INT,
-                status ENUM('draft', 'published', 'archived') DEFAULT 'draft',
-                published_at TIMESTAMP NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-            );
-            
-            CREATE TABLE submissions (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                name VARCHAR(255) NOT NULL,
-                email VARCHAR(255) NOT NULL,
-                subject VARCHAR(255),
-                message TEXT,
-                form_type ENUM('contact', 'newsletter', 'support') DEFAULT 'contact',
-                status ENUM('new', 'read', 'replied', 'archived') DEFAULT 'new',
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            );
-            
-            CREATE TABLE products (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                name VARCHAR(255) NOT NULL,
-                description TEXT,
-                price DECIMAL(10, 2) NOT NULL,
-                stock INT DEFAULT 0,
-                image VARCHAR(255),
-                status ENUM('active', 'inactive', 'out_of_stock') DEFAULT 'active',
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-            );
-            
-            CREATE TABLE media (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                filename VARCHAR(255) NOT NULL,
-                original_name VARCHAR(255),
-                file_path VARCHAR(255) NOT NULL,
-                file_size INT,
-                mime_type VARCHAR(100),
-                uploaded_by INT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            );
-            
             -- Insert default admin user (password: Blacnova2025)
             INSERT INTO users (email, password_hash, full_name, role) 
-            VALUES ('admin@blacnova.com', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'Admin User', 'admin');
+            VALUES ('admin@blacnova.com', '" . password_hash('Blacnova2025', PASSWORD_DEFAULT) . "', 'Admin User', 'admin');
             
             -- Insert some default settings
             INSERT INTO settings (setting_key, setting_value) VALUES 
@@ -119,6 +73,28 @@ try {
             ('admin_email', 'admin@blacnova.com');
         ");
     }
+
+    // NEW: Check and create user_integrations table
+    $tableCheck = $pdo->query("SHOW TABLES LIKE 'user_integrations'");
+    if ($tableCheck->rowCount() == 0) {
+        $pdo->exec("
+            CREATE TABLE user_integrations (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                user_id INT NOT NULL,
+                provider VARCHAR(50) NOT NULL,
+                access_token TEXT NOT NULL,
+                refresh_token TEXT,
+                expires_at TIMESTAMP NULL,
+                scope VARCHAR(255),
+                provider_user_id VARCHAR(255),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+                UNIQUE KEY (user_id, provider)
+            );
+        ");
+    }
+
 } catch (\PDOException $e) {
     echo json_encode(['success' => false, 'message' => 'Table creation failed: ' . $e->getMessage()]);
     exit;
@@ -145,17 +121,13 @@ try {
         // Successful login
         unset($user['password_hash']); // Don't send password back
         
-        // Create session token (optional)
-        $session_token = bin2hex(random_bytes(32));
         $_SESSION['user_id'] = $user['id'];
         $_SESSION['email'] = $user['email'];
         $_SESSION['role'] = $user['role'];
-        $_SESSION['token'] = $session_token;
         
         echo json_encode([
             'success' => true, 
-            'user' => $user,
-            'token' => $session_token
+            'user' => $user
         ]);
     } else {
         // Invalid credentials
