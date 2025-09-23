@@ -124,14 +124,15 @@
             document.addEventListener('auth-success', () => {
                 this.loadConnectedApps();
             });
-            if (sessionStorage.getItem('blacnova_auth') === 'authenticated' || localStorage.getItem('blacnova_auth') === 'authenticated') {
-                this.loadConnectedApps();
-            }
             this.checkIntegrationStatus();
         },
         async loadConnectedApps() {
             try {
                 const response = await fetch('./api/integrations/get_integrations.php');
+                if (response.status === 401) {
+                    console.error('Not authorized to fetch integrations. User might be logged out.');
+                    return;
+                }
                 if (!response.ok) throw new Error('Network response was not ok');
                 const data = await response.json();
                 if (data.success) {
@@ -372,7 +373,7 @@
 
     <footer class="bg-transparent border-t mt-16 py-8 text-center text-sm transition-colors duration-300" :class="{ 'text-gray-500 border-gray-200': showAccountPage, 'text-gray-400 border-white/10': !showAccountPage }">
         <a href="https://www.blacnova.net/" target="_blank" rel="noopener noreferrer">
-            <img :src="showAccountPage ? 'https://www.blacnova.net/img/bn_black.png' : 'https://www.blacnova.net/img/bn.png'" alt="Blacnova Icon" class="h-12 mx-auto mb-4">
+            <img :src="showAccountPage ? 'https://www.blacnova.net/img/bn_black.png' : 'img/bn.png'" alt="Blacnova Icon" class="h-12 mx-auto mb-4">
         </a>
         <p>&copy; 2025 Blacnova Development</p>
         <div class="mt-2 space-x-4">
@@ -427,6 +428,9 @@
 
     <script>
     document.addEventListener('DOMContentLoaded', function () {
+        const alpineContainer = document.querySelector('[x-data]');
+        const alpineComponent = alpineContainer.__x;
+        
         const canvas = document.getElementById('particle-bg');
         if (canvas) {
             const ctx = canvas.getContext('2d');
