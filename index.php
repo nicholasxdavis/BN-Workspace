@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF--8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" href="https://www.blacnova.net/img/bn_orange.png" type="image/png">
     <title>Blacnova Dashboard</title>
     <style>
         body, html {
@@ -45,7 +46,7 @@
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
-            background-image: url('img/bn.png');
+            background-image: url('https://www.blacnova.net/img/bn.png');
             background-size: contain;
             background-repeat: no-repeat;
             background-position: center;
