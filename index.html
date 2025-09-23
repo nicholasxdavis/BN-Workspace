@@ -447,7 +447,7 @@
                 <h2 class="text-2xl font-medium text-white font-['Space_Grotesk']">Connect a New App</h2>
                 <button @click="showModal = false" class="text-gray-400 hover:text-white transition-colors text-2xl font-bold">&times;</button>
             </div>
-            <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
+            <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 max-h-[60vh] overflow-y-auto pr-2 pt-4 custom-scrollbar">
                 <template x-for="app in allIntegrations" :key="app.provider">
                      <div @click="connectApp(app)" 
                          class="app-card !p-4 !rounded-xl items-center text-center" 
@@ -522,7 +522,6 @@
                 }
             }
             const animate = () => {
-                if(!canvas) return;
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
                 particles.forEach(p => { p.update(); p.draw(); });
                 requestAnimationFrame(animate);
@@ -623,4 +622,3 @@
     </script>
 </body>
 </html>
-
