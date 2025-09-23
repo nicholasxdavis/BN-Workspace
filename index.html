@@ -101,65 +101,119 @@
         .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.3); }
     </style>
 </head>
-<body class="min-h-screen" x-data="{ 
-    showAccountPage: false,
-    activeTab: 'profile',
-    showModal: false,
-    showDeleteModal: false,
-    appToDelete: null,
-    integrations: [
-        { name: 'BN Website', icon: 'fas fa-globe', color: '#df722d' },
-        { name: 'GitHub', icon: 'fab fa-github', color: '#ffffff' },
-        { name: 'Reddit', icon: 'fab fa-reddit-alien', color: '#FF4500' },
-        { name: 'Discord', icon: 'fab fa-discord', color: '#5865F2' },
-        { name: 'LinkedIn', icon: 'fab fa-linkedin-in', color: '#0A66C2' },
-        { name: 'Facebook', icon: 'fab fa-facebook', color: '#1877F2' },
-        { name: 'Instagram', icon: 'fab fa-instagram', color: '#E4405F' },
-        { name: 'Gmail', icon: 'fas fa-envelope', color: '#EA4335' },
-        { name: 'Google Docs', icon: 'fas fa-file-word', color: '#4285F4' },
-        { name: 'Google Sheets', icon: 'fas fa-file-excel', color: '#34A853' },
-        { name: 'Google Forms', icon: 'fas fa-file-alt', color: '#7B1FA2' },
-        { name: 'Notion', img: 'https://upload.wikimedia.org/wikipedia/commons/thumb/e/e9/Notion-logo.svg/1200px-Notion-logo.svg.png', color: '#ffffff' },
-        { name: 'Google Calendar', icon: 'fas fa-calendar-alt', color: '#0F9D58' },
-        { name: 'Dropbox', icon: 'fab fa-dropbox', color: '#0061FF' },
-        { name: 'Google Drive', icon: 'fab fa-google-drive', color: '#1DA462' }
-    ],
-    connectedApps: [],
-    toastMessage: '',
-    toastVisible: false,
-    addIntegration(app) {
-        if (this.connectedApps.some(a => a.name === app.name)) {
-            this.showToast(`${app.name} is already connected.`);
-            return;
+<body class="min-h-screen" 
+    x-data="{ 
+        showAccountPage: false,
+        activeTab: 'profile',
+        showModal: false,
+        showDeleteModal: false,
+        appToDelete: null,
+        allIntegrations: [
+            { name: 'BN Website', provider: 'bn_website', icon: 'fas fa-globe', color: '#df722d', enabled: false },
+            { name: 'GitHub', provider: 'github', icon: 'fab fa-github', color: '#ffffff', enabled: false },
+            { name: 'Reddit', provider: 'reddit', icon: 'fab fa-reddit-alien', color: '#FF4500', enabled: true },
+            { name: 'Discord', provider: 'discord', icon: 'fab fa-discord', color: '#5865F2', enabled: false },
+            { name: 'LinkedIn', provider: 'linkedin', icon: 'fab fa-linkedin-in', color: '#0A66C2', enabled: false }
+        ],
+        connectedApps: [],
+        toastMessage: '',
+        toastType: 'success',
+        toastVisible: false,
+
+        init() {
+            document.addEventListener('auth-success', () => {
+                this.loadConnectedApps();
+            });
+            if (sessionStorage.getItem('blacnova_auth') === 'authenticated' || localStorage.getItem('blacnova_auth') === 'authenticated') {
+                this.loadConnectedApps();
+            }
+            this.checkIntegrationStatus();
+        },
+        async loadConnectedApps() {
+            try {
+                const response = await fetch('./api/integrations/get_integrations.php');
+                if (!response.ok) throw new Error('Network response was not ok');
+                const data = await response.json();
+                if (data.success) {
+                    this.connectedApps = data.integrations.map(integration => {
+                        return this.allIntegrations.find(app => app.provider === integration.provider);
+                    }).filter(Boolean);
+                }
+            } catch (error) {
+                console.error('Error loading integrations:', error);
+                this.showToast('Could not load connected apps.', 'error');
+            }
+        },
+        connectApp(app) {
+            if (!app.enabled) {
+                this.showToast(`${app.name} integration is not yet available.`, 'info');
+                return;
+            }
+            if (this.connectedApps.some(a => a.provider === app.provider)) {
+                this.showToast(`${app.name} is already connected.`, 'info');
+                return;
+            }
+            window.location.href = `./api/integrations/connect.php?provider=${app.provider}`;
+        },
+        prepareToRemove(app) {
+            this.appToDelete = app;
+            this.showDeleteModal = true;
+        },
+        async confirmRemoveIntegration() {
+            if (!this.appToDelete) return;
+            try {
+                const response = await fetch('./api/integrations/remove_integration.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ provider: this.appToDelete.provider })
+                });
+                const data = await response.json();
+                if (data.success) {
+                    this.showToast(`${this.appToDelete.name} was removed.`);
+                    this.loadConnectedApps();
+                } else {
+                    this.showToast(data.message || 'Failed to remove integration.', 'error');
+                }
+            } catch (error) {
+                this.showToast('An error occurred while removing the integration.', 'error');
+            } finally {
+                this.showDeleteModal = false;
+                this.appToDelete = null;
+            }
+        },
+        showToast(message, type = 'success') {
+            this.toastMessage = message;
+            this.toastType = type;
+            this.toastVisible = true;
+            setTimeout(() => this.toastVisible = false, 4000);
+        },
+        checkIntegrationStatus() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const successProvider = urlParams.get('integration_success');
+            const error = urlParams.get('integration_error');
+            if (successProvider) {
+                const appName = this.allIntegrations.find(app => app.provider === successProvider)?.name || 'App';
+                this.showToast(`${appName} connected successfully!`);
+                window.history.replaceState({}, document.title, window.location.pathname);
+            } else if (error) {
+                let message = 'An unknown error occurred.';
+                if (error === 'state_mismatch') message = 'Security token mismatch. Please try again.';
+                if (error === 'access_denied') message = 'You denied the connection request.';
+                if (error === 'token_exchange_failed') message = 'Could not verify connection with provider.';
+                this.showToast(`Connection failed: ${message}`, 'error');
+                window.history.replaceState({}, document.title, window.location.pathname);
+            }
         }
-        this.connectedApps.push(app);
-        this.showToast(`${app.name} connected successfully.`);
-        this.showModal = false;
-    },
-    removeIntegration(app) {
-        this.appToDelete = app;
-        this.showDeleteModal = true;
-    },
-    confirmRemoveIntegration() {
-        if (!this.appToDelete) return;
-        this.connectedApps = this.connectedApps.filter(a => a.name !== this.appToDelete.name);
-        this.showToast(`${this.appToDelete.name} was removed.`);
-        this.showDeleteModal = false;
-        this.appToDelete = null;
-    },
-    showToast(message) {
-        this.toastMessage = message;
-        this.toastVisible = true;
-        setTimeout(() => this.toastVisible = false, 3000);
-    }
-}" :class="{ 'bg-white bg-image-none': showAccountPage }">
+    }" 
+    :class="{ 'bg-white bg-image-none': showAccountPage }">
+    
     <canvas id="particle-bg" x-show="!showAccountPage"></canvas>
 
     <header class="header fixed top-0 left-0 w-full z-50" :style="showAccountPage ? { 'background-color': 'rgba(255, 255, 255, 0.95)', 'border-bottom': '1px solid #e5e7eb' } : {}">
         <div class="container mx-auto px-4">
             <div class="header-content flex justify-between items-center h-24">
                 <div class="flex items-center">
-                    <a href="https://www.blacnova.net/" class="flex items-center">
+                    <a href="#" @click.prevent="showAccountPage = false" class="flex items-center">
                         <img :src="showAccountPage ? 'https://www.blacnova.net/img/logo.png' : 'https://www.blacnova.net/img/logo_white.png'" alt="Blacnova Logo" class="logo h-20">
                     </a>
                 </div>
@@ -185,8 +239,8 @@
                         <h2 class="text-2xl font-medium text-white">Your Integrations</h2>
                         <i class="fas fa-chevron-down text-gray-400 transition-transform" :class="{ 'rotate-180': !open }"></i>
                     </div>
-                    <div x-show="open" x-transition:enter="transition ease-out duration-300" x-transition:enter-start="opacity-0 -translate-y-4" x-transition:enter-end="opacity-100 translate-y-0" x-transition:leave="transition ease-in duration-200" x-transition:leave-start="opacity-100 translate-y-0" x-transition:leave-end="opacity-0 -translate-y-4" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                        <template x-for="app in connectedApps" :key="app.name">
+                    <div x-show="open" x-transition class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                        <template x-for="app in connectedApps" :key="app.provider">
                             <div class="app-card">
                                 <div class="content">
                                     <div class="flex items-start mb-4">
@@ -201,7 +255,7 @@
                                     </div>
                                     <p class="text-gray-400 text-sm flex-grow">Your <span x-text="app.name"></span> integration is active and ready to use.</p>
                                     <div class="flex justify-end items-center mt-4">
-                                        <button @click="removeIntegration(app)" class="text-sm text-gray-400 hover:text-white transition-colors duration-200">
+                                        <button @click="prepareToRemove(app)" class="text-sm text-gray-400 hover:text-white transition-colors duration-200">
                                             <i class="fas fa-times-circle mr-1"></i> Remove
                                         </button>
                                     </div>
@@ -233,6 +287,7 @@
                                 <h3 class="text-xl font-bold text-white mb-2">Notes</h3>
                                 <p class="text-gray-400 text-sm flex-grow">Jot down ideas and keep track of your thoughts.</p>
                             </div>
+                            <div class="circle-before"></div>
                         </div>
                         <div class="app-card">
                             <div class="content">
@@ -240,6 +295,7 @@
                                 <h3 class="text-xl font-bold text-white mb-2">Calendar</h3>
                                 <p class="text-gray-400 text-sm flex-grow">Manage your schedule and appointments seamlessly.</p>
                             </div>
+                             <div class="circle-before"></div>
                         </div>
                         <div class="app-card">
                             <div class="content">
@@ -247,6 +303,7 @@
                                 <h3 class="text-xl font-bold text-white mb-2">All-At-Once Poster</h3>
                                 <p class="text-gray-400 text-sm flex-grow">Schedule and post content across multiple platforms at once.</p>
                             </div>
+                             <div class="circle-before"></div>
                         </div>
                         <div class="app-card">
                             <div class="content">
@@ -254,6 +311,7 @@
                                 <h3 class="text-xl font-bold text-white mb-2">Real-Time Trends</h3>
                                 <p class="text-gray-400 text-sm flex-grow">Monitor and analyze real-time trends to stay ahead.</p>
                             </div>
+                             <div class="circle-before"></div>
                         </div>
                     </div>
                 </div>
@@ -314,7 +372,7 @@
 
     <footer class="bg-transparent border-t mt-16 py-8 text-center text-sm transition-colors duration-300" :class="{ 'text-gray-500 border-gray-200': showAccountPage, 'text-gray-400 border-white/10': !showAccountPage }">
         <a href="https://www.blacnova.net/" target="_blank" rel="noopener noreferrer">
-            <img :src="showAccountPage ? 'https://www.blacnova.net/img/bn_black.png' : 'img/bn.png'" alt="Blacnova Icon" class="h-12 mx-auto mb-4">
+            <img :src="showAccountPage ? 'https://www.blacnova.net/img/bn_black.png' : 'https://www.blacnova.net/img/bn.png'" alt="Blacnova Icon" class="h-12 mx-auto mb-4">
         </a>
         <p>&copy; 2025 Blacnova Development</p>
         <div class="mt-2 space-x-4">
@@ -331,8 +389,11 @@
                 <button @click="showModal = false" class="text-gray-400 hover:text-white transition-colors text-2xl font-bold">&times;</button>
             </div>
             <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
-                <template x-for="app in integrations" :key="app.name">
-                    <div @dblclick="addIntegration(app)" class="app-card !p-4 !rounded-xl items-center text-center cursor-pointer" title="Double-click to add">
+                <template x-for="app in allIntegrations" :key="app.provider">
+                     <div @click="connectApp(app)" 
+                         class="app-card !p-4 !rounded-xl items-center text-center" 
+                         :class="app.enabled ? 'cursor-pointer' : 'cursor-not-allowed opacity-50'"
+                         :title="app.enabled ? `Click to connect ${app.name}` : `${app.name} integration coming soon`">
                         <div class="content items-center">
                             <span class="app-icon !w-16 !h-16 !text-3xl" style="background: #1a1a1a;">
                                 <template x-if="app.img"><img :src="app.img" :alt="app.name" class="w-9 h-9 object-contain"></template>
@@ -360,14 +421,12 @@
         </div>
     </div>
 
-    <div x-show="toastVisible" x-transition class="fixed bottom-5 right-5 md:bottom-10 md:right-10 z-[100] px-6 py-3 rounded-xl shadow-lg font-medium" style="display: none; background-color: var(--primary); color: #ffffff;">
+    <div x-show="toastVisible" x-transition class="fixed bottom-5 right-5 md:bottom-10 md:right-10 z-[100] px-6 py-3 rounded-xl shadow-lg font-medium text-white" :class="{ 'bg-green-600': toastType === 'success', 'bg-red-600': toastType === 'error', 'bg-blue-600': toastType === 'info' }" style="display: none;">
         <p x-text="toastMessage"></p>
     </div>
 
     <script>
     document.addEventListener('DOMContentLoaded', function () {
-        // This script block contains the original particle and header scroll effects,
-        // as well as the complete, working authentication logic.
         const canvas = document.getElementById('particle-bg');
         if (canvas) {
             const ctx = canvas.getContext('2d');
@@ -401,6 +460,7 @@
                 }
             }
             const animate = () => {
+                if(!canvas) return;
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
                 particles.forEach(p => { p.update(); p.draw(); });
                 requestAnimationFrame(animate);
@@ -436,7 +496,7 @@
                 authOverlay.querySelector('#login-form').addEventListener('submit', handleLogin);
                 authOverlay.querySelector('#forgot-password-link-main').addEventListener('click', showForgotPassword);
             }
-            function showForgotPassword(e) { /* ... logic ... */ }
+            function showForgotPassword(e) { e.preventDefault(); /* ... logic ... */ }
             function showResetConfirmation() { /* ... logic ... */ }
             async function handleLogin(e) {
                 e.preventDefault();
@@ -452,6 +512,7 @@
                         storage.setItem('blacnova_auth', 'authenticated');
                         storage.setItem('blacnova_user', JSON.stringify(data.user));
                         updateUserInfo(data.user);
+                        document.dispatchEvent(new CustomEvent('auth-success'));
                         authOverlay.style.opacity = '0';
                         setTimeout(() => {
                             authOverlay.style.display = 'none';
@@ -481,20 +542,17 @@
                     window.location.reload();
                 });
             }
-
             const logoutBtn = document.getElementById('logout-btn');
             if(logoutBtn) logoutBtn.addEventListener('click', handleLogout);
-            
             const user = JSON.parse(localStorage.getItem('blacnova_user') || sessionStorage.getItem('blacnova_user'));
             const isAuthenticated = localStorage.getItem('blacnova_auth') === 'authenticated' || sessionStorage.getItem('blacnova_auth') === 'authenticated';
-            
             document.body.appendChild(authOverlay);
-
             if (isAuthenticated && user) {
                 updateUserInfo(user);
                 authOverlay.style.display = 'none';
                 document.documentElement.style.overflow = '';
                 document.body.style.overflow = '';
+                document.dispatchEvent(new CustomEvent('auth-success'));
             } else {
                 showLogin();
             }
