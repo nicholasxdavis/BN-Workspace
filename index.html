@@ -1,7 +1,7 @@
 <html lang="en" class="scroll-smooth">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0 ">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Workspace by Blacnova</title>
     <link rel="icon" href="https://www.blacnova.net/img/bn_orange.png" type="image/png">
     <script src="https://cdn.tailwindcss.com"></script>
@@ -9,7 +9,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&family=Poppins:wght@600&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
     <style>
         :root {
             --primary: #d4611c;
@@ -113,7 +113,17 @@
             { name: 'GitHub', provider: 'github', icon: 'fab fa-github', color: '#ffffff', enabled: false },
             { name: 'Reddit', provider: 'reddit', icon: 'fab fa-reddit-alien', color: '#FF4500', enabled: true },
             { name: 'Discord', provider: 'discord', icon: 'fab fa-discord', color: '#5865F2', enabled: false },
-            { name: 'LinkedIn', provider: 'linkedin', icon: 'fab fa-linkedin-in', color: '#0A66C2', enabled: false }
+            { name: 'LinkedIn', provider: 'linkedin', icon: 'fab fa-linkedin-in', color: '#0A66C2', enabled: false },
+            { name: 'Facebook', provider: 'facebook', icon: 'fab fa-facebook', color: '#1877F2', enabled: false },
+            { name: 'Instagram', provider: 'instagram', icon: 'fab fa-instagram', color: '#E4405F', enabled: false },
+            { name: 'Gmail', provider: 'gmail', icon: 'fas fa-envelope', color: '#EA4335', enabled: false },
+            { name: 'Google Docs', provider: 'google_docs', icon: 'fas fa-file-word', color: '#4285F4', enabled: false },
+            { name: 'Google Sheets', provider: 'google_sheets', icon: 'fas fa-file-excel', color: '#34A853', enabled: false },
+            { name: 'Google Forms', provider: 'google_forms', icon: 'fas fa-file-alt', color: '#7B1FA2', enabled: false },
+            { name: 'Notion', provider: 'notion', img: 'https://upload.wikimedia.org/wikipedia/commons/thumb/e/e9/Notion-logo.svg/1200px-Notion-logo.svg.png', color: '#ffffff', enabled: false },
+            { name: 'Google Calendar', provider: 'google_calendar', icon: 'fas fa-calendar-alt', color: '#0F9D58', enabled: false },
+            { name: 'Dropbox', provider: 'dropbox', icon: 'fab fa-dropbox', color: '#0061FF', enabled: false },
+            { name: 'Google Drive', provider: 'google_drive', icon: 'fab fa-google-drive', color: '#1DA462', enabled: false }
         ],
         connectedApps: [],
         toastMessage: '',
@@ -314,6 +324,38 @@
                             </div>
                              <div class="circle-before"></div>
                         </div>
+                         <div class="app-card">
+                            <div class="content">
+                                <div class="app-icon"><i class="fas fa-file-invoice-dollar" style="color: var(--primary)"></i></div>
+                                <h3 class="text-xl font-bold text-white mb-2">Invoice Generation</h3>
+                                <p class="text-gray-400 text-sm flex-grow">Create and send professional invoices with ease.</p>
+                            </div>
+                            <div class="circle-before"></div>
+                        </div>
+                        <div class="app-card">
+                            <div class="content">
+                                <div class="app-icon"><i class="fas fa-chart-pie" style="color: var(--primary)"></i></div>
+                                <h3 class="text-xl font-bold text-white mb-2">Analytics Overview</h3>
+                                <p class="text-gray-400 text-sm flex-grow">View analytics from all connected apps that allow for analytics.</p>
+                            </div>
+                             <div class="circle-before"></div>
+                        </div>
+                        <div class="app-card">
+                            <div class="content">
+                                <div class="app-icon"><i class="fas fa-clock" style="color: var(--primary)"></i></div>
+                                <h3 class="text-xl font-bold text-white mb-2">BN Cronos</h3>
+                                <p class="text-gray-400 text-sm flex-grow">Our cron time-based job scheduler for automations.</p>
+                            </div>
+                             <div class="circle-before"></div>
+                        </div>
+                        <div class="app-card">
+                            <div class="content">
+                                <div class="app-icon"><i class="fas fa-tasks" style="color: var(--primary)"></i></div>
+                                <h3 class="text-xl font-bold text-white mb-2">BN Tasks</h3>
+                                <p class="text-gray-400 text-sm flex-grow">A single hub to plan, track, manage, and optimize all work.</p>
+                            </div>
+                             <div class="circle-before"></div>
+                        </div>
                     </div>
                 </div>
             </section>
@@ -350,6 +392,12 @@
                             <a href="#" @click.prevent="activeTab = 'billing'" class="flex items-center px-3 py-2 text-sm rounded-md transition-colors" :class="{ 'bg-gray-100 text-gray-900 font-semibold': activeTab === 'billing', 'text-gray-600 hover:bg-gray-50 hover:text-gray-900': activeTab !== 'billing' }">
                                 <i class="fas fa-credit-card w-5 mr-3 text-gray-500"></i><span>Billing</span>
                             </a>
+                             <a href="#" @click.prevent="activeTab = 'security'" class="flex items-center px-3 py-2 text-sm rounded-md transition-colors" :class="{ 'bg-gray-100 text-gray-900 font-semibold': activeTab === 'security', 'text-gray-600 hover:bg-gray-50 hover:text-gray-900': activeTab !== 'security' }">
+                                <i class="fas fa-shield-alt w-5 mr-3 text-gray-500"></i><span>Security</span>
+                            </a>
+                             <a href="#" @click.prevent="activeTab = 'integrations'" class="flex items-center px-3 py-2 text-sm rounded-md transition-colors" :class="{ 'bg-gray-100 text-gray-900 font-semibold': activeTab === 'integrations', 'text-gray-600 hover:bg-gray-50 hover:text-gray-900': activeTab !== 'integrations' }">
+                                <i class="fas fa-cubes w-5 mr-3 text-gray-500"></i><span>Integrations</span>
+                            </a>
                         </nav>
                     </div>
                 </aside>
@@ -364,6 +412,16 @@
                             <h1 class="text-2xl md:text-3xl font-bold mb-1 text-gray-800">Billing</h1>
                             <p class="text-gray-500 mb-6">Manage your subscription and view payment history.</p>
                             <div class="space-y-4"><p>Content for billing settings goes here...</p></div>
+                        </div>
+                        <div x-show="activeTab === 'security'" style="display: none;" x-transition>
+                            <h1 class="text-2xl md:text-3xl font-bold mb-1 text-gray-800">Security</h1>
+                            <p class="text-gray-500 mb-6">Manage your password, two-factor authentication, and active sessions.</p>
+                            <div class="space-y-4"><p>Content for security settings goes here...</p></div>
+                        </div>
+                         <div x-show="activeTab === 'integrations'" style="display: none;" x-transition>
+                            <h1 class="text-2xl md:text-3xl font-bold mb-1 text-gray-800">My Integrations</h1>
+                            <p class="text-gray-500 mb-6">Manage your connected applications and services.</p>
+                            <div class="space-y-4"><p>Content for managing integrations goes here...</p></div>
                         </div>
                     </div>
                 </main>
