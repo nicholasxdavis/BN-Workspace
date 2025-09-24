@@ -193,8 +193,7 @@
     appToDelete: null,
     allIntegrations: [
         { name: 'BN Website', provider: 'bn_website', icon: 'fas fa-globe', color: '#df722d', enabled: false },
-        { name: 'GitHub', provider: 'github', icon: 'fab fa-github', color: '#ffffff', enabled: false },
-        { name: 'Reddit', provider: 'reddit', icon: 'fab fa-reddit-alien', color: '#FF4500', enabled: true, tool_url: './api/integrations/reddit/index.html' },
+        { name: 'GitHub', provider: 'github', icon: 'fab fa-github', color: '#ffffff', enabled: true, tool_url: './api/integrations/github/index.html' },
         { name: 'Discord', provider: 'discord', icon: 'fab fa-discord', color: '#5865F2', enabled: false },
         { name: 'LinkedIn', provider: 'linkedin', icon: 'fab fa-linkedin-in', color: '#0A66C2', enabled: false },
         { name: 'Facebook', provider: 'facebook', icon: 'fab fa-facebook', color: '#1877F2', enabled: false },
