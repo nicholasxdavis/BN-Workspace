@@ -69,11 +69,13 @@ try {
         // 2. Get User's Top 5 Posts (last month)
         $posts_data = makeRedditApiRequest("/user/{$encoded_username}/submitted?sort=top&t=month&limit=5", $access_token);
         if (isset($posts_data['error'])) throw new Exception('Failed to fetch user posts.', $posts_data['code']);
+        $topPostsTitle = 'Your Top 5 Posts (This Month)';
 
         // If no posts this month, get all-time top posts as a fallback
         if (empty($posts_data['data']['children'])) {
             $posts_data = makeRedditApiRequest("/user/{$encoded_username}/submitted?sort=top&t=all&limit=5", $access_token);
             if (isset($posts_data['error'])) throw new Exception('Failed to fetch all-time user posts.', $posts_data['code']);
+            $topPostsTitle = 'Your Top 5 Posts (All Time)';
         }
         
         $topPosts = [];
@@ -131,6 +133,7 @@ try {
             'success' => true,
             'stats' => $stats,
             'topPosts' => $topPosts,
+            'topPostsTitle' => $topPostsTitle,
             'trendingData' => $trendingData
         ]);
     }
