@@ -1,5 +1,6 @@
 <?php
 // api/auth/key_handler.php
+// OPEN ROUTER KEY
 session_start();
 header('Content-Type: application/json');
 
