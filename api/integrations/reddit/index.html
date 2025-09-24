@@ -120,13 +120,13 @@
                 </div>
                 <div class="bg-[var(--card-bg)] p-6 rounded-lg border border-[var(--border-color)]">
                     <h3 class="text-sm font-medium text-gray-400">Average Upvote Rate</h3>
-                    <p class="text-3xl font-bold mt-2" x-text="`${stats.upvoteRate}`"></p>
-                     <p class="text-sm text-gray-400 flex items-center mt-1">Not provided by API</p>
+                    <p class="text-3xl font-bold mt-2" x-text="stats.averageUpvoteRate"></p>
+                     <p class="text-sm text-gray-400 flex items-center mt-1">Based on your posts this month</p>
                 </div>
                 <div class="bg-[var(--card-bg)] p-6 rounded-lg border border-[var(--border-color)]">
-                    <h3 class="text-sm font-medium text-gray-400">Follower Growth</h3>
-                    <p class="text-3xl font-bold mt-2" x-text="stats.followerGrowth"></p>
-                     <p class="text-sm text-gray-400 flex items-center mt-1">Not provided by API</p>
+                    <h3 class="text-sm font-medium text-gray-400">Average Comments</h3>
+                    <p class="text-3xl font-bold mt-2" x-text="stats.averageComments"></p>
+                     <p class="text-sm text-gray-400 flex items-center mt-1">Based on your posts this month</p>
                 </div>
             </div>
 
@@ -157,7 +157,7 @@
                             </div>
                         </template>
                     </div>
-                    <p x-show="!dashboardLoading && topPosts.length === 0" class="text-gray-400">No posts found or data could not be loaded.</p>
+                    <p x-show="!dashboardLoading && topPosts.length === 0" class="text-gray-400">No posts found for the last month.</p>
                 </div>
             </div>
         </div>
@@ -238,7 +238,7 @@
                 isLoading: false, // For AI actions
                 dashboardLoading: true,
                 apiKey: null,
-                stats: { karma: '...', upvoteRate: '...', followerGrowth: '...' },
+                stats: { karma: '...', averageUpvoteRate: '...', averageComments: '...' },
                 topPosts: [],
                 composer: { subreddit: '', title: '', content: '' },
                 analyzer: { subreddit: '', result: '' },
@@ -252,7 +252,7 @@
 
                 async loadApiKey() {
                     try {
-                        const response = await fetch('./key_handler.php');
+                        const response = await fetch(`./key_handler.php?t=${Date.now()}`);
                         if (!response.ok) {
                            throw new Error(`Could not fetch API key. Server responded with status ${response.status}`);
                         }
@@ -271,9 +271,10 @@
                 async loadDashboardData() {
                     this.dashboardLoading = true;
                     try {
-                        const response = await fetch('./reddit_api.php?action=dashboard_data');
+                        const response = await fetch(`./reddit_api.php?action=dashboard_data&t=${Date.now()}`);
                         if (!response.ok) {
-                            throw new Error(`Your Reddit session may have expired. Please try removing and re-adding the Reddit integration. (Status: ${response.status})`);
+                            const errorText = await response.text();
+                            throw new Error(`Failed to load data. Please re-authenticate Reddit if the issue persists. (Status: ${response.status} - ${errorText})`);
                         }
                         const data = await response.json();
                         if (data.success) {
@@ -336,20 +337,20 @@
                     this.isLoading = true;
                     
                     let prompt = '';
-                    let systemMessage = "You are an expert Reddit marketing and content assistant integrated into a business workspace tool. Be insightful, concise, and format your responses in simple HTML for readability (e.g., using <ul>, <li>, <strong>).";
+                    let systemMessage = "You are an expert Reddit marketing and content assistant. Be insightful, concise, and format your responses in simple HTML (e.g., using <ul>, <li>, <strong>).";
                     
                     switch(type) {
                         case 'improve':
                             if (!input) { this.isLoading = false; return; }
-                            prompt = `Please review and improve the following Reddit post content. Enhance its clarity, engagement, and tone for its intended subreddit. Provide only the improved text as a response, without any extra commentary.\n\nContent:\n${input}`;
+                            prompt = `Improve this Reddit post content for clarity, engagement, and tone. Provide only the improved text.\n\nContent:\n${input}`;
                             break;
                         case 'analyze':
                             if (!input) { this.isLoading = false; return; }
-                            prompt = `Provide a brief analysis of the subreddit "${input}". Include the following sections: a one-sentence summary, key topics of discussion, community sentiment, and three content ideas.`;
+                            prompt = `Analyze the subreddit "${input}". Include: a one-sentence summary, key topics, community sentiment, and three content ideas.`;
                             break;
                         case 'summarize':
                             if (!input) { this.isLoading = false; return; }
-                            prompt = `Provide a concise summary of the key points and overall sentiment from this Reddit thread: ${input}. Focus on the main arguments and conclusions.`;
+                            prompt = `Summarize the key points and sentiment from this Reddit thread: ${input}.`;
                             break;
                         default:
                             this.isLoading = false; return;
@@ -431,17 +432,14 @@
                 },
 
                 async getAIResponse(prompt, systemMessage, modelIndex = 0) {
-                    if (!this.apiKey) {
-                        throw new Error("AI API Key is not loaded.");
-                    }
+                    if (!this.apiKey) throw new Error("AI API Key is not loaded.");
 
                     const MODELS = [
-                        'deepseek/deepseek-chat', // Common identifier for deepseek models
-                        'x-ai/grok-1.5',
-                        'nvidia/nemotron-4-340b-instruct',
-                        'openai/gpt-4o',
-                        'google/gemini-pro',
-                        'meta-llama/llama-3-70b-instruct'
+                        'deepseek/deepseek-chat',
+                        'meta-llama/llama-3-8b-instruct',
+                        'google/gemma-2-9b-it',
+                        'mistralai/mistral-7b-instruct',
+                        'anthropic/claude-3-haiku'
                     ];
 
                     if (modelIndex >= MODELS.length) {
@@ -470,19 +468,19 @@
 
                         if (!response.ok) {
                              const errorData = await response.json().catch(() => ({}));
-                             // If model is not found or has no endpoints, try the next one
-                             if (response.status === 404 || errorData?.error?.message.includes('No endpoints found')) {
-                                console.warn(`Model ${model} failed, trying next...`);
+                             const errorMessage = errorData?.error?.message || `API request failed with status ${response.status}`;
+                             
+                             if (response.status === 404 || errorMessage.includes('No endpoints found')) {
+                                console.warn(`Model ${model} failed: ${errorMessage}. Trying next...`);
                                 return this.getAIResponse(prompt, systemMessage, modelIndex + 1);
                              }
-                            throw new Error(errorData?.error?.message || `API request failed with status ${response.status}`);
+                            throw new Error(errorMessage);
                         }
 
                         const data = await response.json();
                         return data.choices[0].message.content;
 
                     } catch (error) {
-                        // If any other network error, try the next model
                         console.warn(`An error occurred with model ${model}: ${error.message}. Trying next...`);
                         return this.getAIResponse(prompt, systemMessage, modelIndex + 1);
                     }
