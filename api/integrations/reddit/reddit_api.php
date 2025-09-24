@@ -121,12 +121,12 @@ try {
             }
         }
         
-        usort($all_trending_posts, fn($a, $b) => $b['data']['score'] <=> $a['data']['score']);
+        usort($all_trending_posts, fn($a, $b) => ($b['data']['score'] ?? 0) <=> ($a['data']['score'] ?? 0));
         $top_trending = array_slice($all_trending_posts, 0, 7);
 
         $trendingData = [
-            'labels' => array_map(fn($post) => $post['data']['title'], $top_trending),
-            'scores' => array_map(fn($post) => $post['data']['score'], $top_trending)
+            'labels' => array_map(fn($post) => $post['data']['title'] ?? 'Untitled', $top_trending),
+            'scores' => array_map(fn($post) => $post['data']['score'] ?? 0, $top_trending)
         ];
 
         echo json_encode([
@@ -137,12 +137,40 @@ try {
             'trendingData' => $trendingData
         ]);
     }
+    // --- Action: Get Subreddit Info for AI Context ---
+    elseif ($action === 'get_subreddit_info') {
+        $subreddit = $_GET['subreddit'] ?? '';
+        if (empty($subreddit)) {
+            throw new Exception("Subreddit not specified.", 400);
+        }
+        // Remove 'r/' prefix if present
+        $subreddit = str_replace('r/', '', $subreddit);
+
+        $about_data = makeRedditApiRequest("/r/{$subreddit}/about", $access_token);
+        if (isset($about_data['error'])) throw new Exception("Could not fetch info for r/{$subreddit}.", $about_data['code']);
+        
+        $rules_data = makeRedditApiRequest("/r/{$subreddit}/about/rules", $access_token);
+        // This endpoint can fail without being critical, so we don't throw an exception
+        $rules = [];
+        if (!isset($rules_data['error']) && isset($rules_data['rules'])) {
+            foreach ($rules_data['rules'] as $rule) {
+                $rules[] = $rule['short_name'];
+            }
+        }
+
+        $info = [
+            'description' => $about_data['data']['public_description'] ?? 'No public description available.',
+            'rules' => !empty($rules) ? $rules : ['No specific rules listed via API.'],
+        ];
+
+        echo json_encode(['success' => true, 'info' => $info]);
+    }
     // --- Action: Submit a new post ---
     elseif ($action === 'submit_post' && $_SERVER['REQUEST_METHOD'] === 'POST') {
         $input = json_decode(file_get_contents('php://input'), true);
         
         $post_fields = [
-            'sr' => $input['subreddit'],
+            'sr' => str_replace('r/', '', $input['subreddit']),
             'title' => $input['title'],
             'text' => $input['content'],
             'kind' => 'self',
