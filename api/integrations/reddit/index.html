@@ -1,493 +1,149 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Reddit Dashboard - Blacnova Workspace</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
-    <style>
-        :root {
-            --primary: #d4611c;
-            --primary-light: #e67a35;
-            --dark-bg: #101010;
-            --card-bg: #1a1a1a;
-            --border-color: rgba(255, 255, 255, 0.1);
-            --text-primary: #EEEEEE;
-            --text-secondary: #a1a1aa;
-        }
-        body {
-            font-family: 'Inter', sans-serif;
-            background-color: var(--dark-bg);
-            color: var(--text-primary);
-        }
-        .sidebar-link {
-            transition: all 0.2s ease-in-out;
-        }
-        .sidebar-link.active, .sidebar-link:hover {
-            background-color: rgba(212, 97, 28, 0.1);
-            color: var(--primary-light);
-        }
-        .sidebar-link.active {
-            box-shadow: inset 3px 0 0 0 var(--primary);
-        }
-        .form-input, .form-textarea {
-            background-color: #2a2a2a;
-            border: 1px solid var(--border-color);
-            transition: all 0.2s ease;
-        }
-        .form-input:focus, .form-textarea:focus {
-            outline: none;
-            border-color: var(--primary);
-            box-shadow: 0 0 0 2px rgba(212, 97, 28, 0.3);
-        }
-        .btn-primary {
-            background-color: var(--primary);
-            transition: background-color 0.2s ease;
-        }
-        .btn-primary:hover {
-            background-color: var(--primary-light);
-        }
-        .btn-secondary {
-            background-color: #3a3a3a;
-        }
-         .btn-secondary:hover {
-            background-color: #4a4a4a;
-        }
+<?php
+// api/integrations/reddit/reddit_api.php
+session_start();
+require_once '../../auth/db_connect.php';
+require_once '../../integrations/config.php';
+require_once '../../integrations/encryption.php';
 
-        [x-cloak] { display: none !important; }
+header('Content-Type: application/json');
 
-        .loader {
-            border: 4px solid rgba(255, 255, 255, 0.2);
-            border-left-color: var(--primary);
-            border-radius: 50%;
-            width: 24px;
-            height: 24px;
-            animation: spin 1s linear infinite;
-        }
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-    </style>
-</head>
-<body class="h-screen flex" x-data="redditTool()" x-init="init()">
+// --- Central function to manage and refresh the OAuth token ---
+function getValidAccessToken($pdo, $user_id) {
+    // 1. Fetch the current tokens from the database
+    $stmt = $pdo->prepare("SELECT access_token, refresh_token, expires_at FROM user_integrations WHERE user_id = ? AND provider = 'reddit'");
+    $stmt->execute([$user_id]);
+    $integration = $stmt->fetch();
 
-    <!-- Sidebar -->
-    <aside class="w-64 bg-[var(--card-bg)] border-r border-[var(--border-color)] flex flex-col">
-        <div class="p-6 border-b border-[var(--border-color)]">
-             <h1 class="text-xl font-bold flex items-center"><i class="fab fa-reddit-alien text-2xl mr-3" style="color: #FF4500;"></i>Reddit Dashboard</h1>
-             <p class="text-xs text-gray-400 mt-1">Blacnova Workspace</p>
-        </div>
-        <nav class="flex-1 p-4 space-y-2">
-            <a href="#" @click.prevent="activeTab = 'dashboard'" class="sidebar-link flex items-center px-4 py-2 rounded-lg" :class="{ 'active': activeTab === 'dashboard' }">
-                <i class="fas fa-home w-6"></i>
-                <span>Dashboard</span>
-            </a>
-            <a href="#" @click.prevent="activeTab = 'composer'" class="sidebar-link flex items-center px-4 py-2 rounded-lg" :class="{ 'active': activeTab === 'composer' }">
-                <i class="fas fa-pen-to-square w-6"></i>
-                <span>Post Composer</span>
-            </a>
-            <a href="#" @click.prevent="activeTab = 'analyzer'" class="sidebar-link flex items-center px-4 py-2 rounded-lg" :class="{ 'active': activeTab === 'analyzer' }">
-                <i class="fas fa-chart-line w-6"></i>
-                <span>Subreddit Analyzer</span>
-            </a>
-            <a href="#" @click.prevent="activeTab = 'summarizer'" class="sidebar-link flex items-center px-4 py-2 rounded-lg" :class="{ 'active': activeTab === 'summarizer' }">
-                <i class="fas fa-file-lines w-6"></i>
-                <span>Content Summarizer</span>
-            </a>
-        </nav>
-        <div class="p-4 border-t border-[var(--border-color)]">
-             <a href="../.." class="text-sm text-gray-400 hover:text-white transition-colors flex items-center"><i class="fas fa-arrow-left mr-2"></i> Back to Workspace</a>
-        </div>
-    </aside>
+    if (!$integration || !$integration['refresh_token']) {
+        throw new Exception("Reddit integration or refresh token not found. Please re-authenticate.", 401);
+    }
 
-    <!-- Main Content -->
-    <main class="flex-1 p-8 overflow-y-auto">
-        <!-- Dashboard -->
-        <div x-show="activeTab === 'dashboard'" x-cloak>
-            <h2 class="text-3xl font-bold mb-6">Account Overview</h2>
-            <!-- Stats Cards -->
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                <div class="bg-[var(--card-bg)] p-6 rounded-lg border border-[var(--border-color)]">
-                    <h3 class="text-sm font-medium text-gray-400">Total Karma</h3>
-                    <p class="text-3xl font-bold mt-2" x-text="stats.karma"></p>
-                    <p class="text-sm text-gray-400 flex items-center mt-1">Live from Reddit</p>
-                </div>
-                <div class="bg-[var(--card-bg)] p-6 rounded-lg border border-[var(--border-color)]">
-                    <h3 class="text-sm font-medium text-gray-400">Average Upvote Rate</h3>
-                    <p class="text-3xl font-bold mt-2" x-text="stats.averageUpvoteRate"></p>
-                     <p class="text-sm text-gray-400 flex items-center mt-1">Based on your posts this month</p>
-                </div>
-                <div class="bg-[var(--card-bg)] p-6 rounded-lg border border-[var(--border-color)]">
-                    <h3 class="text-sm font-medium text-gray-400">Average Comments</h3>
-                    <p class="text-3xl font-bold mt-2" x-text="stats.averageComments"></p>
-                     <p class="text-sm text-gray-400 flex items-center mt-1">Based on your posts this month</p>
-                </div>
-            </div>
+    $expires_at = new DateTime($integration['expires_at']);
+    $now = new DateTime();
 
-            <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                <!-- Trending on Reddit -->
-                <div class="lg:col-span-1 bg-[var(--card-bg)] p-6 rounded-lg border border-[var(--border-color)]">
-                    <h3 class="text-xl font-bold mb-4">Trending on Reddit</h3>
-                     <div x-show="dashboardLoading" class="flex justify-center items-center h-64"><div class="loader"></div></div>
-                    <div x-show="!dashboardLoading" class="h-64">
-                        <canvas id="trendingChart"></canvas>
-                    </div>
-                </div>
-                <!-- Top Performing Posts -->
-                <div class="lg:col-span-2 bg-[var(--card-bg)] p-6 rounded-lg border border-[var(--border-color)]">
-                    <h3 class="text-xl font-bold mb-4">Your Top 5 Posts (This Month)</h3>
-                     <div x-show="dashboardLoading" class="flex justify-center items-center h-48"><div class="loader"></div></div>
-                     <div x-show="!dashboardLoading && topPosts.length > 0" class="space-y-4">
-                        <template x-for="post in topPosts" :key="post.id">
-                             <div class="flex justify-between items-center p-3 bg-[#2a2a2a] rounded-lg">
-                                <div>
-                                    <p class="font-semibold" x-text="post.title"></p>
-                                    <p class="text-sm text-gray-400" x-text="post.subreddit"></p>
-                                </div>
-                                <div class="text-right flex-shrink-0 ml-4">
-                                    <p class="font-bold text-green-400" x-text="`${post.upvotes} Upvotes`"></p>
-                                    <p class="text-sm text-gray-400" x-text="`${post.comments} Comments`"></p>
-                                </div>
-                            </div>
-                        </template>
-                    </div>
-                    <p x-show="!dashboardLoading && topPosts.length === 0" class="text-gray-400">No posts found for the last month.</p>
-                </div>
-            </div>
-        </div>
+    // 2. Check if the token is expired or close to expiring
+    if ($now < $expires_at) {
+        return decrypt_token($integration['access_token']); // Token is still valid
+    }
 
-        <!-- Post Composer -->
-        <div x-show="activeTab === 'composer'" x-cloak>
-            <h2 class="text-3xl font-bold mb-6">AI Post Composer</h2>
-            <div class="bg-[var(--card-bg)] p-6 rounded-lg border border-[var(--border-color)]">
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                    <div>
-                        <label for="subreddit" class="block text-sm font-medium mb-2">Subreddit (e.g., r/technology)</label>
-                        <input type="text" id="subreddit" x-model="composer.subreddit" class="form-input w-full px-4 py-2 rounded-lg" placeholder="r/yoursubreddit">
-                    </div>
-                    <div>
-                        <label for="title" class="block text-sm font-medium mb-2">Post Title</label>
-                        <input type="text" id="title" x-model="composer.title" class="form-input w-full px-4 py-2 rounded-lg" placeholder="An interesting title">
-                    </div>
-                </div>
-                <div>
-                    <label for="content" class="block text-sm font-medium mb-2">Content</label>
-                    <textarea id="content" x-model="composer.content" rows="10" class="form-textarea w-full px-4 py-2 rounded-lg" placeholder="Write your post here..."></textarea>
-                </div>
-                <div class="flex justify-between items-center mt-6">
-                    <button @click="aiAction('improve', composer.content)" class="btn-secondary px-5 py-2 rounded-lg font-semibold flex items-center" :disabled="isLoading || !apiKey">
-                        <i class="fas fa-wand-magic-sparkles mr-2"></i>
-                        <span x-show="!isLoading">AI Improve</span>
-                        <div x-show="isLoading" class="loader"></div>
-                    </button>
-                    <button @click="postToReddit()" class="btn-primary px-6 py-2 rounded-lg font-bold">Post to Reddit</button>
-                </div>
-            </div>
-        </div>
+    // 3. If expired, use the refresh token to get a new access token
+    $token_url = 'https://www.reddit.com/api/v1/access_token';
+    $post_data = [
+        'grant_type' => 'refresh_token',
+        'refresh_token' => decrypt_token($integration['refresh_token']),
+    ];
 
-        <!-- Subreddit Analyzer -->
-        <div x-show="activeTab === 'analyzer'" x-cloak>
-            <h2 class="text-3xl font-bold mb-6">Subreddit Analyzer</h2>
-            <div class="bg-[var(--card-bg)] p-6 rounded-lg border border-[var(--border-color)]">
-                <label for="analyze-subreddit" class="block text-sm font-medium mb-2">Enter a subreddit to analyze</label>
-                <div class="flex">
-                    <input type="text" id="analyze-subreddit" x-model="analyzer.subreddit" class="form-input w-full px-4 py-2 rounded-l-lg" placeholder="r/futurology">
-                    <button @click="aiAction('analyze', analyzer.subreddit)" class="btn-primary px-6 py-2 rounded-r-lg font-bold flex items-center" :disabled="isLoading || !apiKey">
-                        <span x-show="!isLoading">Analyze</span>
-                         <div x-show="isLoading" class="loader"></div>
-                    </button>
-                </div>
-                 <div x-show="analyzer.result" class="mt-6 border-t border-[var(--border-color)] pt-6">
-                    <h3 class="text-xl font-bold mb-4">Analysis Results</h3>
-                    <div class="prose prose-invert max-w-none whitespace-pre-wrap" x-html="analyzer.result"></div>
-                </div>
-            </div>
-        </div>
+    $ch = curl_init($token_url);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_POST, true);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($post_data));
+    curl_setopt($ch, CURLOPT_USERPWD, REDDIT_CLIENT_ID . ':' . REDDIT_CLIENT_SECRET);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, ['User-Agent: BlacnovaWorkspace/1.0']);
+    
+    $response = curl_exec($ch);
+    $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
 
-        <!-- Content Summarizer -->
-        <div x-show="activeTab === 'summarizer'" x-cloak>
-            <h2 class="text-3xl font-bold mb-6">Content Summarizer</h2>
-            <div class="bg-[var(--card-bg)] p-6 rounded-lg border border-[var(--border-color)]">
-                <label for="summarize-url" class="block text-sm font-medium mb-2">Enter a Reddit Thread URL to summarize</label>
-                <div class="flex">
-                    <input type="text" id="summarize-url" x-model="summarizer.url" class="form-input w-full px-4 py-2 rounded-l-lg" placeholder="https://www.reddit.com/r/...">
-                    <button @click="aiAction('summarize', summarizer.url)" class="btn-primary px-6 py-2 rounded-r-lg font-bold flex items-center" :disabled="isLoading || !apiKey">
-                         <span x-show="!isLoading">Summarize</span>
-                         <div x-show="isLoading" class="loader"></div>
-                    </button>
-                </div>
-                 <div x-show="summarizer.result" class="mt-6 border-t border-[var(--border-color)] pt-6">
-                    <h3 class="text-xl font-bold mb-4">Summary</h3>
-                    <div class="prose prose-invert max-w-none whitespace-pre-wrap" x-text="summarizer.result"></div>
-                </div>
-            </div>
-        </div>
-        
-    </main>
+    $token_data = json_decode($response, true);
 
-    <script>
-        function redditTool() {
-            return {
-                activeTab: 'dashboard',
-                isLoading: false, // For AI actions
-                dashboardLoading: true,
-                apiKey: null,
-                stats: { karma: '...', averageUpvoteRate: '...', averageComments: '...' },
-                topPosts: [],
-                composer: { subreddit: '', title: '', content: '' },
-                analyzer: { subreddit: '', result: '' },
-                summarizer: { url: '', result: '' },
-                trendingChart: null,
+    if ($http_code !== 200 || !isset($token_data['access_token'])) {
+        // If refresh fails, the user must re-authenticate
+        throw new Exception("Could not refresh Reddit session. Please re-authenticate.", 401);
+    }
+    
+    // 4. Update the database with the new token and expiry time
+    $new_access_token = $token_data['access_token'];
+    $new_expires_in = $token_data['expires_in'];
+    $new_expires_at = (new DateTime())->add(new DateInterval('PT' . $new_expires_in . 'S'))->format('Y-m-d H:i:s');
+    
+    $update_stmt = $pdo->prepare(
+        "UPDATE user_integrations SET access_token = ?, expires_at = ?, updated_at = NOW() 
+         WHERE user_id = ? AND provider = 'reddit'"
+    );
+    $update_stmt->execute([encrypt_token($new_access_token), $new_expires_at, $user_id]);
 
-                async init() {
-                    await this.loadApiKey();
-                    this.loadDashboardData();
-                },
+    return $new_access_token;
+}
 
-                async loadApiKey() {
-                    try {
-                        const response = await fetch(`./key_handler.php?t=${Date.now()}`);
-                        if (!response.ok) {
-                           throw new Error(`Could not fetch API key. Server responded with status ${response.status}`);
-                        }
-                        const data = await response.json();
-                        if (data.success) {
-                            this.apiKey = data.apiKey;
-                        } else {
-                            throw new Error(data.error || 'Failed to get API key from server.');
-                        }
-                    } catch (error) {
-                        console.error("API Key Load Error:", error);
-                        this.apiKey = null;
-                    }
-                },
 
-                async loadDashboardData() {
-                    this.dashboardLoading = true;
-                    try {
-                        const response = await fetch(`./reddit_api.php?action=dashboard_data&t=${Date.now()}`);
-                        if (!response.ok) {
-                            const errorText = await response.text();
-                            throw new Error(`Failed to load data. Please re-authenticate Reddit if the issue persists. (Status: ${response.status} - ${errorText})`);
-                        }
-                        const data = await response.json();
-                        if (data.success) {
-                            this.stats = data.stats;
-                            this.topPosts = data.topPosts;
-                            if (data.trendingData && data.trendingData.labels && data.trendingData.labels.length > 0) {
-                                this.renderTrendingChart(data.trendingData);
-                            } else {
-                                const canvas = document.getElementById('trendingChart');
-                                const ctx = canvas.getContext('2d');
-                                ctx.clearRect(0, 0, canvas.width, canvas.height);
-                                ctx.fillStyle = '#a1a1aa';
-                                ctx.textAlign = 'center';
-                                ctx.fillText('Could not load trending data.', canvas.width / 2, canvas.height / 2);
-                            }
-                        } else {
-                            throw new Error(data.error || 'Failed to load dashboard data.');
-                        }
-                    } catch (error) {
-                        console.error("Dashboard Load Error:", error);
-                        alert(`Could not load your Reddit data. Error: ${error.message}`);
-                    } finally {
-                        this.dashboardLoading = false;
-                    }
-                },
-                
-                async postToReddit() {
-                    if (!this.composer.subreddit || !this.composer.title || !this.composer.content) {
-                        alert('Please fill out the subreddit, title, and content fields.');
-                        return;
-                    }
-                    
-                    if (confirm('Are you sure you want to post this to Reddit?')) {
-                        try {
-                            const response = await fetch('./reddit_api.php?action=submit_post', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify(this.composer)
-                            });
-                            const result = await response.json();
-                            if (result.success) {
-                                alert('Successfully posted to Reddit!');
-                                this.composer = { subreddit: '', title: '', content: '' };
-                            } else {
-                                throw new Error(result.error || 'Failed to post.');
-                            }
-                        } catch (error) {
-                            console.error("Post Error:", error);
-                            alert(`Failed to post to Reddit. Error: ${error.message}`);
-                        }
-                    }
-                },
+// --- Helper function to make requests to the Reddit API ---
+function makeRedditApiRequest($endpoint, $access_token) {
+    $api_url = 'https://oauth.reddit.com' . $endpoint;
+    $ch = curl_init($api_url);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, [
+        'Authorization: bearer ' . $access_token,
+        'User-Agent: BlacnovaWorkspace/1.0'
+    ]);
+    
+    $response = curl_exec($ch);
+    $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
 
-                aiAction(type, input = '') {
-                    if (!this.apiKey) {
-                        alert('The AI API Key is not configured. AI features are disabled.');
-                        return;
-                    }
-                    if (this.isLoading) return;
-                    this.isLoading = true;
-                    
-                    let prompt = '';
-                    let systemMessage = "You are an expert Reddit marketing and content assistant. Be insightful, concise, and format your responses in simple HTML (e.g., using <ul>, <li>, <strong>).";
-                    
-                    switch(type) {
-                        case 'improve':
-                            if (!input) { this.isLoading = false; return; }
-                            prompt = `Improve this Reddit post content for clarity, engagement, and tone. Provide only the improved text.\n\nContent:\n${input}`;
-                            break;
-                        case 'analyze':
-                            if (!input) { this.isLoading = false; return; }
-                            prompt = `Analyze the subreddit "${input}". Include: a one-sentence summary, key topics, community sentiment, and three content ideas.`;
-                            break;
-                        case 'summarize':
-                            if (!input) { this.isLoading = false; return; }
-                            prompt = `Summarize the key points and sentiment from this Reddit thread: ${input}.`;
-                            break;
-                        default:
-                            this.isLoading = false; return;
-                    }
+    if ($http_code >= 400) {
+        return ['error' => true, 'code' => $http_code, 'message' => json_decode($response, true)];
+    }
+    return json_decode($response, true);
+}
 
-                    this.getAIResponse(prompt, systemMessage)
-                        .then(response => {
-                            switch(type) {
-                                case 'improve':
-                                    this.composer.content = response;
-                                    break;
-                                case 'analyze':
-                                    this.analyzer.result = response;
-                                    break;
-                                case 'summarize':
-                                    this.summarizer.result = response;
-                                    break;
-                            }
-                        })
-                        .catch(error => {
-                            console.error("AI Error:", error);
-                            alert("Sorry, there was an error communicating with the AI. " + error.message);
-                        })
-                        .finally(() => {
-                            this.isLoading = false;
-                        });
-                },
-                
-                renderTrendingChart(data) {
-                    if (this.trendingChart) {
-                        this.trendingChart.destroy();
-                    }
-                    const truncatedLabels = data.labels.map(label => label.length > 25 ? label.substring(0, 22) + '...' : label);
-                    const ctx = document.getElementById('trendingChart').getContext('2d');
-                    this.trendingChart = new Chart(ctx, {
-                        type: 'bar',
-                        data: {
-                            labels: truncatedLabels,
-                            datasets: [{
-                                label: 'Upvotes (Past 24h)',
-                                data: data.scores,
-                                backgroundColor: 'rgba(212, 97, 28, 0.5)',
-                                borderColor: 'rgba(212, 97, 28, 1)',
-                                borderWidth: 1
-                            }]
-                        },
-                        options: {
-                            indexAxis: 'y',
-                            responsive: true,
-                            maintainAspectRatio: false,
-                            plugins: {
-                                legend: { display: false },
-                                tooltip: {
-                                    backgroundColor: '#1a1a1a',
-                                    titleColor: '#EEEEEE',
-                                    bodyColor: '#EEEEEE',
-                                    borderColor: 'rgba(212, 97, 28, 1)',
-                                    borderWidth: 1,
-                                    callbacks: {
-                                        title: (tooltipItems) => {
-                                            return data.labels[tooltipItems[0].dataIndex];
-                                        }
-                                    }
-                                }
-                            },
-                            scales: {
-                                x: {
-                                    beginAtZero: true,
-                                    grid: { color: 'rgba(255, 255, 255, 0.1)' },
-                                    ticks: { color: '#a1a1aa' }
-                                },
-                                y: {
-                                    grid: { display: false },
-                                    ticks: { color: '#a1a1aa' }
-                                }
-                            }
-                        }
-                    });
-                },
 
-                async getAIResponse(prompt, systemMessage, modelIndex = 0) {
-                    if (!this.apiKey) throw new Error("AI API Key is not loaded.");
+// --- Main Logic ---
+if (!isset($_SESSION['user_id'])) {
+    http_response_code(401);
+    echo json_encode(['success' => false, 'error' => 'User not authenticated']);
+    exit;
+}
 
-                    const MODELS = [
-                        'deepseek/deepseek-chat',
-                        'meta-llama/llama-3-8b-instruct',
-                        'google/gemma-2-9b-it',
-                        'mistralai/mistral-7b-instruct',
-                        'anthropic/claude-3-haiku'
-                    ];
+try {
+    $access_token = getValidAccessToken($pdo, $_SESSION['user_id']);
+    
+    // Get User Account Info
+    $me_data = makeRedditApiRequest('/api/v1/me', $access_token);
+    if (isset($me_data['error'])) throw new Exception('Failed to fetch user data.', $me_data['code']);
+    
+    $username = $me_data['name'];
+    
+    // Get User's Top Posts (last month)
+    $posts_data = makeRedditApiRequest("/user/{$username}/submitted?sort=top&t=month&limit=100", $access_token);
+    if (isset($posts_data['error'])) throw new Exception('Failed to fetch user posts.', $posts_data['code']);
+    
+    $topPosts = [];
+    $total_upvote_ratio = 0;
+    $total_comments = 0;
+    $post_count = 0;
 
-                    if (modelIndex >= MODELS.length) {
-                        throw new Error("All available AI models failed to respond.");
-                    }
-
-                    const model = MODELS[modelIndex];
-
-                    try {
-                        const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-                            method: "POST",
-                            headers: {
-                                "Authorization": `Bearer ${this.apiKey}`,
-                                "Content-Type": "application/json",
-                                "HTTP-Referer": "https://workspace.blacnova.net", 
-                                "X-Title": "Blacnova Workspace"
-                            },
-                            body: JSON.stringify({
-                                "model": model,
-                                "messages": [
-                                    { "role": "system", "content": systemMessage },
-                                    { "role": "user", "content": prompt }
-                                ]
-                            })
-                        });
-
-                        if (!response.ok) {
-                             const errorData = await response.json().catch(() => ({}));
-                             const errorMessage = errorData?.error?.message || `API request failed with status ${response.status}`;
-                             
-                             if (response.status === 404 || errorMessage.includes('No endpoints found')) {
-                                console.warn(`Model ${model} failed: ${errorMessage}. Trying next...`);
-                                return this.getAIResponse(prompt, systemMessage, modelIndex + 1);
-                             }
-                            throw new Error(errorMessage);
-                        }
-
-                        const data = await response.json();
-                        return data.choices[0].message.content;
-
-                    } catch (error) {
-                        console.warn(`An error occurred with model ${model}: ${error.message}. Trying next...`);
-                        return this.getAIResponse(prompt, systemMessage, modelIndex + 1);
-                    }
-                }
+    if (isset($posts_data['data']['children'])) {
+        foreach ($posts_data['data']['children'] as $post) {
+            $post_count++;
+            $total_upvote_ratio += $post['data']['upvote_ratio'];
+            $total_comments += $post['data']['num_comments'];
+            
+            if (count($topPosts) < 5) {
+                $topPosts[] = [
+                    'title' => $post['data']['title'],
+                    'subreddit' => $post['data']['subreddit_name_prefixed'],
+                    'upvotes' => number_format($post['data']['score']),
+                    'comments' => number_format($post['data']['num_comments'])
+                ];
             }
         }
-    </script>
-</body>
-</html>
+    }
+
+    $stats = [
+        'karma' => number_format($me_data['total_karma']),
+        'averageUpvoteRate' => ($post_count > 0) ? round(($total_upvote_ratio / $post_count) * 100, 1) . '%' : 'N/A',
+        'averageComments' => ($post_count > 0) ? round($total_comments / $post_count, 1) : 'N/A'
+    ];
+
+    echo json_encode([
+        'success' => true,
+        'stats' => $stats,
+        'topPosts' => $topPosts
+    ]);
+
+} catch (Exception $e) {
+    http_response_code($e->getCode() > 0 ? $e->getCode() : 500);
+    echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+}
+?>
 
