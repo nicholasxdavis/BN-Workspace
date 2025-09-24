@@ -27,6 +27,16 @@ if ($provider === 'reddit') {
     $code_verifier = rtrim(strtr(base64_encode(random_bytes(32)), '+/', '-_'), '=');
     $_SESSION['dropbox_code_verifier'] = $code_verifier;
     $code_challenge = rtrim(strtr(base64_encode(hash('sha256', $code_verifier, true)), '+/', '-_'), '=');
+    
+    // Define all the scopes your app needs
+    $scopes = [
+        'account_info.read', 'account_info.write',
+        'files.metadata.read', 'files.metadata.write',
+        'files.content.read', 'files.content.write',
+        'sharing.read', 'sharing.write',
+        'file_requests.read', 'file_requests.write',
+        'contacts.read', 'contacts.write'
+    ];
 
     $params = [
         'client_id' => DROPBOX_APP_KEY,
@@ -36,6 +46,7 @@ if ($provider === 'reddit') {
         'token_access_type' => 'offline', // To get a refresh token
         'code_challenge_method' => 'S256',
         'code_challenge' => $code_challenge,
+        'scope' => implode(' ', $scopes), // Add the scopes to the request
     ];
     $auth_url = 'https://www.dropbox.com/oauth2/authorize?' . http_build_query($params);
     header('Location: ' . $auth_url);
@@ -47,3 +58,4 @@ if ($provider === 'reddit') {
 echo 'Invalid provider specified.';
 exit;
 ?>
+
