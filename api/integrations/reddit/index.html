@@ -181,7 +181,7 @@
                     <textarea id="content" x-model="composer.content" rows="10" class="form-textarea w-full px-4 py-2 rounded-lg" placeholder="Write your post here..."></textarea>
                 </div>
                 <div class="flex justify-between items-center mt-6">
-                    <button @click="aiAction('improve', composer.content)" class="btn-secondary px-5 py-2 rounded-lg font-semibold flex items-center" :disabled="isLoading">
+                    <button @click="aiAction('improve', composer.content)" class="btn-secondary px-5 py-2 rounded-lg font-semibold flex items-center" :disabled="isLoading || !apiKey">
                         <i class="fas fa-wand-magic-sparkles mr-2"></i>
                         <span x-show="!isLoading">AI Improve</span>
                         <div x-show="isLoading" class="loader"></div>
@@ -198,7 +198,7 @@
                 <label for="analyze-subreddit" class="block text-sm font-medium mb-2">Enter a subreddit to analyze</label>
                 <div class="flex">
                     <input type="text" id="analyze-subreddit" x-model="analyzer.subreddit" class="form-input w-full px-4 py-2 rounded-l-lg" placeholder="r/futurology">
-                    <button @click="aiAction('analyze', analyzer.subreddit)" class="btn-primary px-6 py-2 rounded-r-lg font-bold flex items-center" :disabled="isLoading">
+                    <button @click="aiAction('analyze', analyzer.subreddit)" class="btn-primary px-6 py-2 rounded-r-lg font-bold flex items-center" :disabled="isLoading || !apiKey">
                         <span x-show="!isLoading">Analyze</span>
                          <div x-show="isLoading" class="loader"></div>
                     </button>
@@ -217,7 +217,7 @@
                 <label for="summarize-url" class="block text-sm font-medium mb-2">Enter a Reddit Thread URL to summarize</label>
                 <div class="flex">
                     <input type="text" id="summarize-url" x-model="summarizer.url" class="form-input w-full px-4 py-2 rounded-l-lg" placeholder="https://www.reddit.com/r/...">
-                    <button @click="aiAction('summarize', summarizer.url)" class="btn-primary px-6 py-2 rounded-r-lg font-bold flex items-center" :disabled="isLoading">
+                    <button @click="aiAction('summarize', summarizer.url)" class="btn-primary px-6 py-2 rounded-r-lg font-bold flex items-center" :disabled="isLoading || !apiKey">
                          <span x-show="!isLoading">Summarize</span>
                          <div x-show="isLoading" class="loader"></div>
                     </button>
@@ -264,7 +264,8 @@
                         }
                     } catch (error) {
                         console.error("API Key Load Error:", error);
-                        alert(error.message);
+                        // Do not alert, as it can be annoying. We will handle the disabled state in the UI.
+                        this.apiKey = null;
                     }
                 },
 
@@ -329,6 +330,10 @@
                 },
 
                 aiAction(type, input = '') {
+                    if (!this.apiKey) {
+                        alert('The AI API Key is not configured. AI features are disabled.');
+                        return;
+                    }
                     if (this.isLoading) return;
                     this.isLoading = true;
                     
