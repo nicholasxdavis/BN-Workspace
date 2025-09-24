@@ -12,6 +12,7 @@ if (!isset($_SESSION['user_id'])) {
 }
 
 try {
+    // IMPORTANT: This query assumes your environment variables are in the 'settings' table.
     $stmt = $pdo->prepare("SELECT setting_value FROM settings WHERE setting_key = 'OPEN_ROUTER' LIMIT 1");
     $stmt->execute();
     $result = $stmt->fetch();
@@ -20,7 +21,7 @@ try {
         echo json_encode(['success' => true, 'apiKey' => $result['setting_value']]);
     } else {
         http_response_code(404);
-        echo json_encode(['success' => false, 'error' => 'OPEN_ROUTER API key not found in database settings.']);
+        echo json_encode(['success' => false, 'error' => 'OPEN_ROUTER API key not found in the database settings table.']);
     }
 } catch (PDOException $e) {
     http_response_code(500);
@@ -28,3 +29,4 @@ try {
     exit;
 }
 ?>
+
