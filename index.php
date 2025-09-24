@@ -700,7 +700,7 @@
          x-transition:leave-end="opacity-0 transform translate-y-2"
          style="display: none;"
          class="fixed bottom-5 right-5 md:bottom-10 md:right-10 z-[100] px-6 py-3 rounded-xl shadow-lg font-medium text-white"
-         :class="{ 'bg-green-600': toastType === 'success', 'bg-red-600': toastType === 'error', 'bg-blue-600': toastType === 'info' }">
+         :class="{ 'bg-[#df722d]': toastType === 'success', 'bg-[#df722d]': toastType === 'error', 'bg-[#df722d]': toastType === 'info' }">
         <p x-text="toastMessage"></p>
     </div>
 
