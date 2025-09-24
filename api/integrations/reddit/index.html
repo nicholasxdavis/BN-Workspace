@@ -77,7 +77,6 @@
 </head>
 <body class="h-screen flex" x-data="redditTool()" x-init="init()">
 
-    <!-- Sidebar -->
     <aside class="w-64 bg-[var(--card-bg)] border-r border-[var(--border-color)] flex flex-col">
         <div class="p-6 border-b border-[var(--border-color)]">
              <h1 class="text-xl font-bold flex items-center"><i class="fab fa-reddit-alien text-2xl mr-3" style="color: #FF4500;"></i>Reddit Dashboard</h1>
@@ -106,12 +105,9 @@
         </div>
     </aside>
 
-    <!-- Main Content -->
     <main class="flex-1 p-8 overflow-y-auto">
-        <!-- Dashboard -->
         <div x-show="activeTab === 'dashboard'" x-cloak>
             <h2 class="text-3xl font-bold mb-6">Account Overview</h2>
-            <!-- Stats Cards -->
             <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
                 <div class="bg-[var(--card-bg)] p-6 rounded-lg border border-[var(--border-color)]">
                     <h3 class="text-sm font-medium text-gray-400">Total Karma</h3>
@@ -131,7 +127,6 @@
             </div>
 
             <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                <!-- Trending on Reddit -->
                 <div class="lg:col-span-1 bg-[var(--card-bg)] p-6 rounded-lg border border-[var(--border-color)]">
                     <h3 class="text-xl font-bold mb-4">Trending on Reddit</h3>
                      <div x-show="dashboardLoading" class="flex justify-center items-center h-64"><div class="loader"></div></div>
@@ -139,9 +134,8 @@
                         <canvas id="trendingChart"></canvas>
                     </div>
                 </div>
-                <!-- Top Performing Posts -->
                 <div class="lg:col-span-2 bg-[var(--card-bg)] p-6 rounded-lg border border-[var(--border-color)]">
-                    <h3 class="text-xl font-bold mb-4">Your Top 5 Posts (This Month)</h3>
+                    <h3 class="text-xl font-bold mb-4" x-text="topPostsTitle"></h3>
                      <div x-show="dashboardLoading" class="flex justify-center items-center h-48"><div class="loader"></div></div>
                      <div x-show="!dashboardLoading && topPosts.length > 0" class="space-y-4">
                         <template x-for="post in topPosts" :key="post.id">
@@ -162,7 +156,6 @@
             </div>
         </div>
 
-        <!-- Post Composer -->
         <div x-show="activeTab === 'composer'" x-cloak>
             <h2 class="text-3xl font-bold mb-6">AI Post Composer</h2>
             <div class="bg-[var(--card-bg)] p-6 rounded-lg border border-[var(--border-color)]">
@@ -191,7 +184,6 @@
             </div>
         </div>
 
-        <!-- Subreddit Analyzer -->
         <div x-show="activeTab === 'analyzer'" x-cloak>
             <h2 class="text-3xl font-bold mb-6">Subreddit Analyzer</h2>
             <div class="bg-[var(--card-bg)] p-6 rounded-lg border border-[var(--border-color)]">
@@ -210,7 +202,6 @@
             </div>
         </div>
 
-        <!-- Content Summarizer -->
         <div x-show="activeTab === 'summarizer'" x-cloak>
             <h2 class="text-3xl font-bold mb-6">Content Summarizer</h2>
             <div class="bg-[var(--card-bg)] p-6 rounded-lg border border-[var(--border-color)]">
@@ -240,6 +231,7 @@
                 apiKey: null,
                 stats: { karma: '...', averageUpvoteRate: '...', averageComments: '...' },
                 topPosts: [],
+                topPostsTitle: 'Your Top 5 Posts (This Month)',
                 composer: { subreddit: '', title: '', content: '' },
                 analyzer: { subreddit: '', result: '' },
                 summarizer: { url: '', result: '' },
@@ -280,6 +272,7 @@
                         if (data.success) {
                             this.stats = data.stats;
                             this.topPosts = data.topPosts;
+                            this.topPostsTitle = data.topPostsTitle || 'Your Top 5 Posts (This Month)';
                             if (data.trendingData && data.trendingData.labels && data.trendingData.labels.length > 0) {
                                 this.renderTrendingChart(data.trendingData);
                             } else {
@@ -490,4 +483,3 @@
     </script>
 </body>
 </html>
-
