@@ -7,134 +7,282 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
     <style>
-        body { font-family: 'Inter', sans-serif; background-color: #101010; color: #EEEEEE; }
+        :root { --primary: #0061FF; --primary-light: #3b82f6; --dark-bg: #101010; --card-bg: #1a1a1a; --border-color: rgba(255, 255, 255, 0.1); --text-primary: #EEEEEE; --text-secondary: #a1a1aa; }
+        body { font-family: 'Inter', sans-serif; background-color: var(--dark-bg); color: var(--text-primary); overflow-x: hidden; }
+        #particle-bg { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: -1; opacity: 0.7; }
+        .sidebar-link { transition: all 0.2s ease-in-out; }
+        .sidebar-link.active, .sidebar-link:hover { background-color: rgba(0, 97, 255, 0.1); color: var(--primary-light); }
+        .sidebar-link.active { box-shadow: inset 3px 0 0 0 var(--primary); }
+        .btn { padding: 0.5rem 1.25rem; border-radius: 1.875rem; font-weight: 600; transition: all 0.3s ease; display: inline-flex; align-items: center; justify-content: center; }
+        .btn-primary { background-color: var(--primary); color: white; }
+        .btn-primary:hover { background-color: var(--primary-light); transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0, 97, 255, 0.25); }
+        [x-cloak] { display: none !important; }
+        .loader { border: 4px solid rgba(255, 255, 255, 0.2); border-left-color: var(--primary); border-radius: 50%; width: 24px; height: 24px; animation: spin 1s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .main-content-card { background: linear-gradient(135deg, rgba(26,26,26,0.5) 0%, rgba(10,10,10,0.6) 100%); border: 1px solid rgba(255,255,255,0.1); border-radius: 1.5rem; padding: 2.5rem; backdrop-filter: blur(10px); }
+        .stat-card { background-color: #161618; border-radius: 1rem; padding: 1.5rem; border: 1px solid var(--border-color); transition: all 0.3s ease; }
+        .stat-card:hover { transform: translateY(-4px); border-color: var(--primary); }
     </style>
 </head>
-<body class="bg-gray-900 text-white" x-data="dropboxTool()" x-init="init()">
+<body class="h-screen flex" x-data="dropboxTool()" x-init="init()">
+    <canvas id="particle-bg"></canvas>
+    <!-- Hidden file input for uploads -->
+    <input type="file" id="fileUploadInput" @change="uploadFile($event)" class="hidden" multiple>
 
-    <div class="container mx-auto p-8">
-        <header class="text-center mb-12">
-            <i class="fab fa-dropbox text-6xl text-blue-500 mb-4"></i>
-            <h1 class="text-4xl md:text-5xl font-bold mb-2">Dropbox File Explorer</h1>
-            <p class="text-lg text-gray-400" x-text="accountInfo.name ? `Welcome, ${accountInfo.name}` : 'Your files at a glance.'"></p>
-        </header>
+    <aside class="w-64 bg-[var(--card-bg)]/80 backdrop-blur-lg border-r border-[var(--border-color)] flex flex-col flex-shrink-0 z-10">
+        <div class="p-6 border-b border-[var(--border-color)]">
+             <h1 class="text-xl font-bold flex items-center"><i class="fab fa-dropbox text-2xl mr-3 text-[#0061FF]"></i>Dropbox Tool</h1>
+             <p class="text-xs text-gray-400 mt-1">Blacnova Workspace</p>
+        </div>
+        <nav class="flex-1 p-4 space-y-2">
+            <a href="#" @click.prevent="activeTab = 'dashboard'" class="sidebar-link flex items-center px-4 py-2 rounded-lg" :class="{ 'active': activeTab === 'dashboard' }"><i class="fas fa-home w-6"></i><span>Dashboard</span></a>
+            <a href="#" @click.prevent="activeTab = 'explorer'" class="sidebar-link flex items-center px-4 py-2 rounded-lg" :class="{ 'active': activeTab === 'explorer' }"><i class="fas fa-folder-open w-6"></i><span>File Explorer</span></a>
+        </nav>
+        <div class="p-4 border-t border-[var(--border-color)]">
+             <a href="../.." class="text-sm text-gray-400 hover:text-white transition-colors flex items-center"><i class="fas fa-arrow-left mr-2"></i> Back to Workspace</a>
+        </div>
+    </aside>
 
-        <main class="main-content-card max-w-5xl mx-auto bg-gray-800/50 border border-gray-700/50 rounded-2xl p-8">
-            <!-- Breadcrumbs -->
-            <div class="mb-4 text-gray-400">
-                <template x-for="(crumb, index) in breadcrumbs" :key="index">
-                    <span>
-                        <a href="#" @click.prevent="navigateToPath(crumb.path)" class="hover:text-white" x-text="crumb.name"></a>
-                        <span x-show="index < breadcrumbs.length - 1" class="mx-2">/</span>
-                    </span>
-                </template>
+    <main class="flex-1 p-8 overflow-y-auto">
+        <!-- Dashboard -->
+        <div x-show="activeTab === 'dashboard'" x-cloak>
+             <div class="text-center mb-12">
+                <h1 class="text-4xl md:text-5xl font-medium mb-4 text-white" x-text="`Welcome, ${stats.name}`">Welcome</h1>
+                <p class="text-lg text-gray-300 max-w-2xl mx-auto" x-text="stats.email"></p>
+            </div>
+            <div class="stat-card mb-8">
+                 <h3 class="text-sm font-medium uppercase tracking-wider text-gray-400 mb-3">Storage Usage</h3>
+                 <div class="w-full bg-gray-700 rounded-full h-4">
+                    <div class="bg-primary h-4 rounded-full" :style="`width: ${stats.used_percent}%`"></div>
+                 </div>
+                 <p class="text-right text-sm mt-2 text-gray-300" x-text="`${stats.used_gb} GB of ${stats.allocated_gb} GB used`"></p>
+            </div>
+             <div class="main-content-card">
+                <h3 class="text-xl font-bold mb-4">Files in Root Folder</h3>
+                 <div x-show="dashboardLoading" class="flex justify-center items-center h-48"><div class="loader"></div></div>
+                 <div x-show="!dashboardLoading && recentFiles.length > 0" class="space-y-2">
+                    <template x-for="file in recentFiles" :key="file.id">
+                         <div class="flex items-center p-3 rounded-lg">
+                            <i :class="file['.tag'] === 'folder' ? 'fas fa-folder text-blue-400 w-6' : 'fas fa-file-alt text-gray-400 w-6'"></i>
+                            <span class="ml-4" x-text="file.name"></span>
+                        </div>
+                    </template>
+                </div>
+                <p x-show="!dashboardLoading && recentFiles.length === 0" class="text-gray-400 text-center py-10">No recent files found.</p>
+            </div>
+        </div>
+
+        <!-- File Explorer -->
+        <div x-show="activeTab === 'explorer'" x-cloak>
+            <div class="flex justify-between items-center mb-6">
+                <!-- Breadcrumbs -->
+                <div class="text-gray-400 text-sm md:text-base truncate">
+                    <template x-for="(crumb, index) in breadcrumbs" :key="index">
+                        <span>
+                            <a href="#" @click.prevent="navigateToPath(crumb.path)" class="hover:text-white" x-text="crumb.name"></a>
+                            <span x-show="index < breadcrumbs.length - 1" class="mx-1">/</span>
+                        </span>
+                    </template>
+                </div>
+                <!-- Action Buttons -->
+                <div>
+                    <button @click="triggerUpload()" class="btn btn-primary"><i class="fas fa-upload mr-2"></i>Upload</button>
+                </div>
             </div>
 
             <!-- File List -->
-            <div x-show="!isLoading" class="divide-y divide-gray-700">
-                <template x-for="item in files" :key="item.id">
-                    <div @click="handleItemClick(item)" class="flex items-center p-3 -mx-3 rounded-lg hover:bg-white/5 transition-colors" :class="item['.tag'] === 'folder' ? 'cursor-pointer' : ''">
-                        <div class="w-8 text-center mr-4">
-                            <i :class="item['.tag'] === 'folder' ? 'fas fa-folder text-blue-400' : 'fas fa-file-alt text-gray-400'"></i>
+            <div class="main-content-card !p-4">
+                 <div x-show="isLoading" class="flex justify-center items-center h-96"><div class="loader !w-12 !h-12"></div></div>
+                 <div x-show="!isLoading && files.length > 0" class="divide-y divide-gray-700">
+                    <template x-for="item in files" :key="item.id">
+                        <div class="flex items-center p-4 hover:bg-white/5 transition-colors rounded-lg group">
+                            <div @click="handleItemClick(item)" class="flex-1 flex items-center" :class="item['.tag'] === 'folder' ? 'cursor-pointer' : ''">
+                                <i :class="item['.tag'] === 'folder' ? 'fas fa-folder text-blue-400 w-6' : 'fas fa-file-alt text-gray-400 w-6'"></i>
+                                <p class="ml-4" x-text="item.name"></p>
+                            </div>
+                            <div class="text-sm text-gray-400 mr-8" x-text="formatDate(item.client_modified)"></div>
+                            <!-- Actions Dropdown -->
+                             <div x-data="{ open: false }" class="relative">
+                                <button @click="open = !open" class="text-gray-500 hover:text-white p-2 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <i class="fas fa-ellipsis-v"></i>
+                                </button>
+                                <div x-show="open" @click.away="open = false" x-transition class="absolute right-0 mt-2 w-48 bg-card-bg border border-border-color rounded-lg shadow-xl z-20">
+                                    <a href="#" @click.prevent="downloadFile(item.path_lower)" class="block px-4 py-2 text-sm text-gray-300 hover:bg-white/5">Download</a>
+                                    <a href="#" @click.prevent="previewFile(item.path_lower)" class="block px-4 py-2 text-sm text-gray-300 hover:bg-white/5">Preview</a>
+                                    <a href="#" @click.prevent="showDeleteModal(item)" class="block px-4 py-2 text-sm text-red-400 hover:bg-red-500/10">Delete</a>
+                                </div>
+                            </div>
                         </div>
-                        <div class="flex-1">
-                            <p class="font-medium" x-text="item.name"></p>
-                        </div>
-                        <div class="text-sm text-gray-400">
-                            <span x-text="formatDate(item.client_modified)"></span>
-                        </div>
-                    </div>
-                </template>
-                 <p x-show="files.length === 0" class="text-center py-12 text-gray-500">This folder is empty.</p>
+                    </template>
+                 </div>
+                 <p x-show="!isLoading && files.length === 0" class="text-center py-20 text-gray-500">This folder is empty.</p>
             </div>
-            <div x-show="isLoading" class="flex justify-center items-center h-64">
-                <i class="fas fa-spinner fa-spin text-4xl text-blue-500"></i>
+        </div>
+    </main>
+
+    <!-- Modals -->
+    <div x-show="uploading" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50" x-transition.opacity>
+        <div class="bg-card-bg p-8 rounded-lg text-center"><div class="loader !w-8 !h-8 mx-auto mb-4"></div>Uploading...</div>
+    </div>
+    <div x-show="deleteModal.show" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50" x-transition.opacity>
+        <div @click.away="deleteModal.show = false" class="bg-card-bg p-8 rounded-lg max-w-sm w-full">
+            <h3 class="text-lg font-bold mb-4">Confirm Deletion</h3>
+            <p class="text-gray-400">Are you sure you want to delete "<span x-text="deleteModal.item.name"></span>"? This action cannot be undone.</p>
+            <div class="flex justify-end space-x-4 mt-6">
+                <button @click="deleteModal.show = false" class="btn btn-secondary !bg-gray-600">Cancel</button>
+                <button @click="confirmDelete()" class="btn !bg-red-600 hover:!bg-red-700">Delete</button>
             </div>
-        </main>
-         <div class="text-center mt-8">
-             <a href="../.." class="text-sm text-gray-400 hover:text-white transition-colors flex items-center justify-center"><i class="fas fa-arrow-left mr-2"></i> Back to Workspace</a>
         </div>
     </div>
 
     <script>
         function dropboxTool() {
             return {
-                accountInfo: {},
+                activeTab: 'dashboard',
+                dashboardLoading: true,
+                isLoading: true,
+                uploading: false,
+                stats: { name: '...', email: '...', used: 0, allocated: 1, used_percent: 0, used_gb: 0, allocated_gb: 0 },
+                recentFiles: [],
                 files: [],
                 breadcrumbs: [{ name: 'Home', path: '' }],
                 currentPath: '',
-                isLoading: true,
+                deleteModal: { show: false, item: null },
+
                 async init() {
-                    await this.loadAccountInfo();
+                    this.initParticles();
+                    await this.loadDashboardData();
                     this.loadFiles('');
                 },
-                async loadAccountInfo() {
+                async loadDashboardData() {
+                    this.dashboardLoading = true;
                     try {
-                        const response = await fetch('./dropbox_api.php?action=get_account_info');
-                        const result = await response.json();
-                        if (result.success) {
-                            this.accountInfo = result.data;
-                        } else throw new Error(result.error);
-                    } catch (error) {
-                        console.error('Error loading account info:', error);
+                        const r = await fetch('./dropbox_api.php?action=dashboard_data');
+                        const d = await r.json();
+                        if (!d.success) throw new Error(d.error);
+                        this.stats.name = d.stats.name;
+                        this.stats.email = d.stats.email;
+                        this.stats.used = d.stats.used;
+                        this.stats.allocated = d.stats.allocated;
+                        this.stats.used_percent = ((d.stats.used / d.stats.allocated) * 100).toFixed(2);
+                        this.stats.used_gb = (d.stats.used / 1e9).toFixed(2);
+                        this.stats.allocated_gb = (d.stats.allocated / 1e9).toFixed(2);
+                        this.recentFiles = d.recent_files;
+                    } catch (e) {
+                        alert(`Error loading dashboard: ${e.message}`);
+                    } finally {
+                        this.dashboardLoading = false;
                     }
                 },
                 async loadFiles(path) {
                     this.isLoading = true;
                     this.currentPath = path;
                     try {
-                        const response = await fetch(`./dropbox_api.php?action=list_files&path=${encodeURIComponent(path)}`);
-                        const result = await response.json();
-                        if (result.success) {
-                            // Sort folders first, then files, all alphabetically
-                            this.files = result.data.entries.sort((a, b) => {
-                                if (a['.tag'] === 'folder' && b['.tag'] !== 'folder') return -1;
-                                if (a['.tag'] !== 'folder' && b['.tag'] === 'folder') return 1;
-                                return a.name.localeCompare(b.name);
-                            });
-                            this.updateBreadcrumbs(path);
-                        } else {
-                            throw new Error(result.error || 'Failed to list files');
-                        }
-                    } catch (error) {
-                        console.error('Error loading files:', error);
-                        alert(`Error: ${error.message}`);
+                        const r = await fetch(`./dropbox_api.php?action=list_files&path=${encodeURIComponent(path)}`);
+                        const d = await r.json();
+                        if (!d.success) throw new Error(d.error);
+                        this.files = d.data.entries.sort((a, b) => {
+                            if (a['.tag'] === 'folder' && b['.tag'] !== 'folder') return -1;
+                            if (a['.tag'] !== 'folder' && b['.tag'] === 'folder') return 1;
+                            return a.name.localeCompare(b.name);
+                        });
+                        this.updateBreadcrumbs(path);
+                    } catch (e) {
+                        alert(`Error loading files: ${e.message}`);
                     } finally {
                         this.isLoading = false;
                     }
                 },
-                handleItemClick(item) {
-                    if (item['.tag'] === 'folder') {
-                        this.loadFiles(item.path_lower);
+                triggerUpload() { document.getElementById('fileUploadInput').click(); },
+                async uploadFile(event) {
+                    const filesToUpload = event.target.files;
+                    if (filesToUpload.length === 0) return;
+                    this.uploading = true;
+                    for (const file of filesToUpload) {
+                        try {
+                            const r = await fetch(`./dropbox_api.php?action=upload_file&path=${encodeURIComponent(this.currentPath)}&filename=${encodeURIComponent(file.name)}`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/octet-stream' },
+                                body: file
+                            });
+                            if (!r.ok) throw new Error(`Upload failed with status ${r.status}`);
+                        } catch (e) {
+                            alert(`Error uploading ${file.name}: ${e.message}`);
+                        }
+                    }
+                    this.uploading = false;
+                    event.target.value = ''; // Reset input
+                    this.loadFiles(this.currentPath); // Refresh
+                },
+                async getTempLink(path) {
+                    try {
+                        const r = await fetch(`./dropbox_api.php?action=get_temporary_link&path=${encodeURIComponent(path)}`);
+                        const d = await r.json();
+                        if (!d.success) throw new Error(d.error);
+                        return d.link;
+                    } catch (e) {
+                        alert(`Error getting link: ${e.message}`);
+                        return null;
                     }
                 },
-                navigateToPath(path) {
-                    this.loadFiles(path);
+                async downloadFile(path) {
+                    const link = await this.getTempLink(path);
+                    if (link) {
+                        const a = document.createElement('a');
+                        a.href = link;
+                        a.download = path.split('/').pop();
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                    }
                 },
+                async previewFile(path) {
+                    const link = await this.getTempLink(path);
+                    if (link) window.open(link, '_blank');
+                },
+                showDeleteModal(item) {
+                    this.deleteModal.item = item;
+                    this.deleteModal.show = true;
+                },
+                async confirmDelete() {
+                    if (!this.deleteModal.item) return;
+                    try {
+                        const r = await fetch('./dropbox_api.php?action=delete_item', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ path: this.deleteModal.item.path_lower })
+                        });
+                        const d = await r.json();
+                        if (!d.success) throw new Error(d.error);
+                        this.deleteModal.show = false;
+                        this.loadFiles(this.currentPath); // Refresh
+                    } catch (e) {
+                        alert(`Error deleting item: ${e.message}`);
+                    }
+                },
+                handleItemClick(item) { if (item['.tag'] === 'folder') this.loadFiles(item.path_lower); },
+                navigateToPath(path) { this.loadFiles(path); },
                 updateBreadcrumbs(path) {
-                    if (path === '') {
-                        this.breadcrumbs = [{ name: 'Home', path: '' }];
-                        return;
-                    }
+                    if (path === '') { this.breadcrumbs = [{ name: 'Home', path: '' }]; return; }
                     const parts = path.split('/').filter(p => p);
                     let currentPath = '';
                     this.breadcrumbs = [{ name: 'Home', path: '' }];
-                    parts.forEach(part => {
-                        currentPath += `/${part}`;
-                        this.breadcrumbs.push({ name: part, path: currentPath });
-                    });
+                    parts.forEach(part => { currentPath += `/${part}`; this.breadcrumbs.push({ name: part, path: currentPath }); });
                 },
-                formatDate(dateString) {
-                    if (!dateString) return '';
-                    return new Date(dateString).toLocaleDateString('en-US', {
-                        year: 'numeric', month: 'short', day: 'numeric'
-                    });
+                formatDate(dateString) { if (!dateString) return ''; return new Date(dateString).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }); },
+                initParticles() {
+                    const canvas = document.getElementById('particle-bg'); if (!canvas) return; const ctx = canvas.getContext('2d'); let particles = []; const particleCount = 70;
+                    const resizeCanvas = () => { canvas.width = window.innerWidth; canvas.height = window.innerHeight; };
+                    class Particle { constructor() { const colors = [`rgba(255, 255, 255, ${Math.random()*0.2+0.1})`, `rgba(0, 97, 255, ${Math.random()*0.3+0.1})`]; this.color = colors[Math.floor(Math.random() * colors.length)]; this.radius = Math.random() * 2 + 1; this.x = Math.random() * canvas.width; this.y = Math.random() * canvas.height; this.vx = (Math.random() - 0.5) * 0.4; this.vy = (Math.random() - 0.5) * 0.4; } draw() { ctx.beginPath(); ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2); ctx.fillStyle = this.color; ctx.fill(); } update() { this.x += this.vx; this.y += this.vy; if (this.x < 0 || this.x > canvas.width) this.vx *= -1; if (this.y < 0 || this.y > canvas.height) this.vy *= -1; } }
+                    for (let i = 0; i < particleCount; i++) particles.push(new Particle());
+                    const animate = () => { ctx.clearRect(0, 0, canvas.width, canvas.height); particles.forEach(p => { p.update(); p.draw(); }); requestAnimationFrame(animate); };
+                    window.addEventListener('resize', resizeCanvas); resizeCanvas(); animate();
                 }
             }
         }
     </script>
-
 </body>
 </html>
+
