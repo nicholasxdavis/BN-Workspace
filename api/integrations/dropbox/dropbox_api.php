@@ -30,8 +30,8 @@ function makeDropboxApiRequest($endpoint, $access_token, $body = null) {
     if ($body) {
         curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($body));
     } else {
-        // Some endpoints require an empty JSON object if no other body is present
-        curl_setopt($ch, CURLOPT_POSTFIELDS, '{}');
+        // Dropbox RPC endpoints that take no arguments expect 'null' as the body.
+        curl_setopt($ch, CURLOPT_POSTFIELDS, 'null');
     }
     
     curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
@@ -88,3 +88,4 @@ try {
     echo json_encode(['success' => false, 'error' => $e->getMessage()]);
 }
 ?>
+
