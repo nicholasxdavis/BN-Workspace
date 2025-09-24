@@ -64,9 +64,10 @@ try {
         if (isset($me_data['error'])) throw new Exception('Failed to fetch user data from Reddit.', $me_data['code']);
 
         $username = $me_data['name'];
-        
-        // 2. Get User's Top Posts (last month) to calculate stats
-        $posts_data = makeRedditApiRequest("/user/{$username}/submitted?sort=top&t=month&limit=100", $access_token);
+        $encoded_username = urlencode($username);
+
+        // 2. Get User's Top 5 Posts (last month) to calculate stats
+        $posts_data = makeRedditApiRequest("/user/{$encoded_username}/submitted?sort=top&t=month&limit=5", $access_token);
         if (isset($posts_data['error'])) throw new Exception('Failed to fetch user posts.', $posts_data['code']);
         
         $topPosts = [];
@@ -74,20 +75,19 @@ try {
         $total_comments = 0;
         $post_count = 0;
 
-        if (isset($posts_data['data']['children'])) {
+        if (isset($posts_data['data']['children']) && is_array($posts_data['data']['children'])) {
             foreach ($posts_data['data']['children'] as $post) {
-                $post_count++;
-                $total_upvote_ratio += $post['data']['upvote_ratio'];
-                $total_comments += $post['data']['num_comments'];
-                
-                // Only add to the display list if it's one of the top 5
-                if (count($topPosts) < 5) {
+                if (isset($post['data'])) {
+                    $post_count++;
+                    $total_upvote_ratio += $post['data']['upvote_ratio'] ?? 0;
+                    $total_comments += $post['data']['num_comments'] ?? 0;
+                    
                     $topPosts[] = [
-                        'id' => $post['data']['id'],
-                        'title' => $post['data']['title'],
-                        'subreddit' => $post['data']['subreddit_name_prefixed'],
-                        'upvotes' => number_format($post['data']['score']),
-                        'comments' => number_format($post['data']['num_comments'])
+                        'id' => $post['data']['id'] ?? 'N/A',
+                        'title' => $post['data']['title'] ?? 'No Title',
+                        'subreddit' => $post['data']['subreddit_name_prefixed'] ?? 'N/A',
+                        'upvotes' => isset($post['data']['score']) ? number_format($post['data']['score']) : '0',
+                        'comments' => isset($post['data']['num_comments']) ? number_format($post['data']['num_comments']) : '0'
                     ];
                 }
             }
@@ -162,4 +162,3 @@ try {
 }
 
 ?>
-
