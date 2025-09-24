@@ -79,12 +79,81 @@
     <main class="flex-1 p-8 overflow-y-auto">
         <!-- Dashboard -->
         <div x-show="activeTab === 'dashboard'" x-cloak>
-            <!-- ... existing dashboard html ... -->
+            <div class="text-center mb-12">
+                <h1 class="text-4xl md:text-5xl font-medium mb-4 text-white" x-text="`Welcome, ${stats.name}`">Welcome</h1>
+                <p class="text-lg text-gray-300 max-w-2xl mx-auto">Your Notion workspace at a glance.</p>
+            </div>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+                <div class="stat-card">
+                    <div class="flex items-center text-gray-400 mb-3">
+                        <i class="fas fa-file-alt mr-2"></i>
+                        <h3 class="text-sm font-medium uppercase tracking-wider">Accessible Pages</h3>
+                    </div>
+                    <p class="text-4xl font-bold text-white" x-text="stats.page_count"></p>
+                </div>
+                <div class="stat-card">
+                    <div class="flex items-center text-gray-400 mb-3">
+                        <i class="fas fa-database mr-2"></i>
+                        <h3 class="text-sm font-medium uppercase tracking-wider">Accessible Databases</h3>
+                    </div>
+                    <p class="text-4xl font-bold text-white" x-text="stats.db_count"></p>
+                </div>
+            </div>
+
+            <div class="main-content-card">
+                <h3 class="text-xl font-bold mb-4">Recently Edited Pages</h3>
+                 <div x-show="dashboardLoading" class="flex justify-center items-center h-48"><div class="loader"></div></div>
+                 <div x-show="!dashboardLoading && recentPages.length > 0" class="space-y-4">
+                    <template x-for="page in recentPages" :key="page.id">
+                         <a :href="page.url" target="_blank" rel="noopener noreferrer" class="flex justify-between items-center p-4 bg-[#2a2a2a] rounded-xl border border-transparent hover:border-primary/50 transition-colors">
+                            <div>
+                                <p class="font-semibold" x-text="page.title"></p>
+                                <p class="text-sm text-gray-400" x-text="`Edited: ${page.last_edited}`"></p>
+                            </div>
+                            <div class="text-right flex-shrink-0 ml-4">
+                               <i class="fas fa-external-link-alt text-gray-400"></i>
+                            </div>
+                        </a>
+                    </template>
+                </div>
+                <p x-show="!dashboardLoading && recentPages.length === 0" class="text-gray-400 text-center py-10">No recent pages found.</p>
+            </div>
         </div>
 
         <!-- Page Creator -->
         <div x-show="activeTab === 'creator'" x-cloak>
-            <!-- ... existing creator html ... -->
+            <div class="text-center mb-12">
+                <h1 class="text-4xl md:text-5xl font-medium mb-4 text-white">Notion Page Creator</h1>
+                <p class="text-lg text-gray-300 max-w-2xl mx-auto">Craft and publish new pages directly to your Notion databases.</p>
+            </div>
+            <div class="main-content-card max-w-4xl mx-auto">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                    <div>
+                        <label for="database" class="block text-sm font-medium mb-2">Select Database</label>
+                        <select id="database" x-model="creator.database_id" class="form-select w-full px-4 py-3">
+                            <option value="">-- Loading Databases --</option>
+                            <template x-for="db in databases" :key="db.id">
+                                <option :value="db.id" x-text="db.title"></option>
+                            </template>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="title" class="block text-sm font-medium mb-2">Page Title</label>
+                        <input type="text" id="title" x-model="creator.title" class="form-input w-full px-4 py-3" placeholder="My New Brilliant Idea">
+                    </div>
+                </div>
+                <div>
+                    <label for="content" class="block text-sm font-medium mb-2">Content</label>
+                    <textarea id="content" x-model="creator.content" rows="10" class="form-textarea w-full px-4 py-3" placeholder="Start writing your content here..."></textarea>
+                </div>
+                <div class="flex flex-col sm:flex-row justify-end items-center mt-6">
+                    <button @click="createPage()" class="btn btn-primary" :disabled="pageCreatorLoading">
+                         <span x-show="!pageCreatorLoading">Create Page in Notion</span>
+                         <div x-show="pageCreatorLoading" class="loader"></div>
+                    </button>
+                </div>
+            </div>
         </div>
 
         <!-- Database Explorer -->
@@ -184,8 +253,40 @@
                     }
                 },
 
-                async loadApiKey() { /* ... existing code ... */ },
-                async loadDashboardData() { /* ... existing code ... */ },
+                async loadApiKey() {
+                    try {
+                        const response = await fetch(`../../auth/key_handler.php?t=${Date.now()}`);
+                        if (!response.ok) throw new Error(`Could not fetch API key. Status: ${response.status}`);
+                        const data = await response.json();
+                        if (data.success) this.apiKey = data.apiKey;
+                        else throw new Error(data.error || 'Failed to get API key.');
+                    } catch (error) {
+                        console.error("API Key Load Error:", error);
+                        this.apiKey = null;
+                    }
+                },
+
+                async loadDashboardData() {
+                    this.dashboardLoading = true;
+                    try {
+                        const response = await fetch(`./notion_api.php?action=dashboard_data&t=${Date.now()}`);
+                        if (!response.ok) {
+                            const errorText = await response.text();
+                            throw new Error(`Failed to load data. Please re-authenticate Notion if the issue persists. (Status: ${response.status} - ${errorText})`);
+                        }
+                        const data = await response.json();
+                        if (data.success) {
+                            this.stats = data.stats;
+                            this.recentPages = data.recent_pages;
+                        } else {
+                            throw new Error(data.error || 'Failed to load dashboard data.');
+                        }
+                    } catch (error) {
+                        alert(`Could not load your Notion data. Error: ${error.message}`);
+                    } finally {
+                        this.dashboardLoading = false;
+                    }
+                },
 
                 async loadDatabases() {
                     this.explorer.loading = true;
@@ -226,7 +327,32 @@
                     }
                 },
 
-                async createPage() { /* ... existing code ... */ },
+                async createPage() {
+                    if (!this.creator.database_id || !this.creator.title) {
+                        alert('Please select a database and provide a title.');
+                        return;
+                    }
+                    this.pageCreatorLoading = true;
+                    try {
+                        const response = await fetch('./notion_api.php?action=create_page', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(this.creator)
+                        });
+                        const result = await response.json();
+                        if (result.success) {
+                            alert('Successfully created page in Notion!');
+                            this.creator.title = '';
+                            this.creator.content = '';
+                        } else {
+                            throw new Error(result.error || 'Failed to create page.');
+                        }
+                    } catch (error) {
+                        alert(`Failed to create page. Error: ${error.message}`);
+                    } finally {
+                        this.pageCreatorLoading = false;
+                    }
+                },
                 
                 extractPageId(url) {
                     try {
@@ -290,7 +416,7 @@
                         .replace(/\*(.*?)\*/g, '<em>$1</em>');
                     
                     formattedText = formattedText.replace(/^\s*[\*-]\s*(.*)$/gm, '<li>$1</li>');
-                    formattedText = formatted-text.replace(/<\/li>\n<li>/g, '</li><li>');
+                    formattedText = formattedText.replace(/<\/li>\n<li>/g, '</li><li>');
                     if(formattedText.includes('<li>')) {
                        formattedText = `<ul>${formattedText.match(/<li>.*?<\/li>/g).join('')}</ul>`;
                     }
@@ -350,7 +476,54 @@
                     }
                 },
 
-                initParticles() { /* ... existing code ... */ }
+                initParticles() {
+                    const canvas = document.getElementById('particle-bg');
+                    if (!canvas) return;
+                    const ctx = canvas.getContext('2d');
+                    let particles = [];
+                    const particleCount = 70;
+
+                    const resizeCanvas = () => {
+                        canvas.width = window.innerWidth;
+                        canvas.height = window.innerHeight;
+                    };
+                    
+                    class Particle {
+                        constructor() {
+                            const colors = [`rgba(255, 255, 255, ${Math.random()*0.2+0.1})`, `rgba(113, 113, 122, ${Math.random()*0.3+0.1})`];
+                            this.color = colors[Math.floor(Math.random() * colors.length)];
+                            this.radius = Math.random() * 2 + 1;
+                            this.x = Math.random() * canvas.width;
+                            this.y = Math.random() * canvas.height;
+                            this.vx = (Math.random() - 0.5) * 0.4;
+                            this.vy = (Math.random() - 0.5) * 0.4;
+                        }
+                        draw() {
+                            ctx.beginPath();
+                            ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                            ctx.fillStyle = this.color;
+                            ctx.fill();
+                        }
+                        update() {
+                            this.x += this.vx;
+                            this.y += this.vy;
+                            if (this.x < 0 || this.x > canvas.width) this.vx *= -1;
+                            if (this.y < 0 || this.y > canvas.height) this.vy *= -1;
+                        }
+                    }
+
+                    for (let i = 0; i < particleCount; i++) particles.push(new Particle());
+                    
+                    const animate = () => {
+                        ctx.clearRect(0, 0, canvas.width, canvas.height);
+                        particles.forEach(p => { p.update(); p.draw(); });
+                        requestAnimationFrame(animate);
+                    };
+
+                    window.addEventListener('resize', resizeCanvas);
+                    resizeCanvas();
+                    animate();
+                }
             }
         }
     </script>
