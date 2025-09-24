@@ -84,7 +84,7 @@ if (isset($_GET['code'])) {
             ]);
 
             // --- 4. Redirect back to the workspace with a success message ---
-            header('Location: ' . ROOT_URL . './api/integrations/reddit/index.html');
+            header('Location: ' . ROOT_URL . '?integration_success=' . urlencode($provider));
             exit;
 
         } catch (PDOException $e) {
