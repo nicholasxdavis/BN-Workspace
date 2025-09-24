@@ -14,26 +14,28 @@ $state = bin2hex(random_bytes(16));
 $_SESSION['oauth_state'] = $state;
 
 if ($provider === 'reddit') {
-    // ... existing reddit code ...
+    $_SESSION['oauth_provider'] = 'reddit';
+    // ... (existing reddit code remains the same)
+
 } elseif ($provider === 'notion') {
-    // ... existing notion code ...
+    $_SESSION['oauth_provider'] = 'notion';
+    // ... (existing notion code remains the same)
+
 } elseif ($provider === 'dropbox') {
-    // ... existing dropbox code ...
+    $_SESSION['oauth_provider'] = 'dropbox';
+    // ... (existing dropbox code remains the same)
+
 } elseif ($provider === 'github') {
     $_SESSION['oauth_provider'] = 'github';
 
-    $scopes = [
-        'repo', 'workflow', 'write:packages', 'delete:packages', 'admin:repo_hook', 
-        'admin:org_hook', 'gist', 'notifications', 'user', 'delete_repo', 'write:discussion', 
-        'write:org', 'admin:enterprise', 'admin:public_key', 'admin:gpg_key'
-    ];
-    
+    // For GitHub Apps, scopes are not passed in the URL.
+    // Permissions are granted during app installation.
     $params = [
         'client_id' => GITHUB_CLIENT_ID,
         'redirect_uri' => GITHUB_REDIRECT_URI,
-        'scope' => implode(' ', $scopes),
         'state' => $state,
     ];
+
     $auth_url = 'https://github.com/login/oauth/authorize?' . http_build_query($params);
     header('Location: ' . $auth_url);
     exit;
