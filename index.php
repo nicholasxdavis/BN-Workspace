@@ -194,7 +194,7 @@
     allIntegrations: [
         { name: 'BN Website', provider: 'bn_website', icon: 'fas fa-globe', color: '#df722d', enabled: false },
         { name: 'GitHub', provider: 'github', icon: 'fab fa-github', color: '#ffffff', enabled: false },
-        { name: 'Reddit', provider: 'reddit', icon: 'fab fa-reddit-alien', color: '#FF4500', enabled: true },
+        { name: 'Reddit', provider: 'reddit', icon: 'fab fa-reddit-alien', color: '#FF4500', enabled: true, tool_url: './api/integrations/reddit/index.html' },
         { name: 'Discord', provider: 'discord', icon: 'fab fa-discord', color: '#5865F2', enabled: false },
         { name: 'LinkedIn', provider: 'linkedin', icon: 'fab fa-linkedin-in', color: '#0A66C2', enabled: false },
         { name: 'Facebook', provider: 'facebook', icon: 'fab fa-facebook', color: '#1877F2', enabled: false },
@@ -288,6 +288,7 @@
         if (successProvider) {
             const appName = this.allIntegrations.find(app => app.provider === successProvider)?.name || 'App';
             this.showToast(`${appName} connected successfully!`);
+            // Clean the URL after showing the toast
             window.history.replaceState({}, document.title, window.location.pathname);
         } else if (error) {
             let message = 'An unknown error occurred.';
@@ -334,7 +335,11 @@
                     </div>
                     <div x-show="open" x-transition:enter="transition ease-out duration-300" x-transition:enter-start="opacity-0 -translate-y-4" x-transition:enter-end="opacity-100 translate-y-0" x-transition:leave="transition ease-in duration-200" x-transition:leave-start="opacity-100 translate-y-0" x-transition:leave-end="opacity-0 -translate-y-4" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
                         <template x-for="app in connectedApps" :key="app.name">
-                            <div class="app-card">
+                             <a :href="app.tool_url || '#'" 
+                                :target="app.tool_url ? '_blank' : '_self'" 
+                                :rel="app.tool_url ? 'noopener noreferrer' : null"
+                                :class="{ 'cursor-pointer': app.tool_url, 'cursor-default': !app.tool_url }"
+                                class="app-card block">
                                 <div class="content">
                                     <div class="flex items-start mb-4">
                                         <span class="app-icon !w-12 !h-12 !text-2xl !mb-0 mr-4 flex-shrink-0" style="background: #1a1a1a;">
@@ -352,13 +357,13 @@
                                     </div>
                                     <p class="text-gray-400 text-sm flex-grow">Your <span x-text="app.name"></span> integration is active and ready to use.</p>
                                     <div class="flex justify-end items-center mt-4">
-                                        <button @click="prepareToRemove(app)" class="text-sm text-gray-400 hover:text-white transition-colors duration-200">
+                                        <button @click.prevent="prepareToRemove(app)" class="text-sm text-gray-400 hover:text-white transition-colors duration-200 z-20 relative">
                                             <i class="fas fa-times-circle mr-1"></i> Remove
                                         </button>
                                     </div>
                                 </div>
                                 <div class="circle-before"></div>
-                            </div>
+                            </a>
                         </template>
                         <div @click="showModal = true" 
                               class="app-card border-dashed border-2 border-white/20 hover:border-primary/50 flex flex-col items-center justify-center text-center cursor-pointer">
