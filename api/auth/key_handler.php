@@ -1,5 +1,5 @@
 <?php
-// api/integrations/reddit/key_handler.php
+// api/auth/key_handler.php
 session_start();
 header('Content-Type: application/json');
 
@@ -22,5 +22,3 @@ if ($apiKey) {
     echo json_encode(['success' => false, 'error' => 'OPEN_ROUTER environment variable not found on the server.']);
 }
 ?>
-
-
