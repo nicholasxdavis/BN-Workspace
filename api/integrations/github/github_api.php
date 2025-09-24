@@ -1,87 +1,67 @@
 <?php
-// api/integrations/github/github_api.php
+// api/integrations/connect.php
 session_start();
-require_once '../../auth/db_connect.php';
-require_once '../../integrations/config.php';
-require_once '../../integrations/encryption.php';
-
-header('Content-Type: application/json');
+require_once 'config.php';
 
 if (!isset($_SESSION['user_id'])) {
-    http_response_code(401);
-    echo json_encode(['success' => false, 'error' => 'User not authenticated']);
+    header('HTTP/1.1 401 Unauthorized');
+    echo 'You must be logged in to connect an app.';
     exit;
 }
 
-function makeGitHubApiRequest($endpoint, $access_token, $method = 'GET', $body = null) {
-    $api_url = 'https://api.github.com' . $endpoint;
-    
-    $ch = curl_init();
-    curl_setopt($ch, CURLOPT_URL, $api_url);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
-    curl_setopt($ch, CURLOPT_CUSTOMREQUEST, $method);
-    curl_setopt($ch, CURLOPT_HTTPHEADER, [
-        'Authorization: Bearer ' . $access_token,
-        'User-Agent: BN-Workspace/1.0',
-        'Accept: application/vnd.github.v3+json'
-    ]);
+$provider = $_GET['provider'] ?? '';
+$state = bin2hex(random_bytes(16));
+$_SESSION['oauth_state'] = $state;
 
-    if ($body && ($method === 'POST' || $method === 'PATCH')) {
-        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($body));
-    }
-    
-    $response = curl_exec($ch);
-    $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
+if ($provider === 'reddit') {
+    $_SESSION['oauth_provider'] = 'reddit';
+    $params = [
+        'client_id' => REDDIT_CLIENT_ID, 'response_type' => 'code', 'state' => $state,
+        'redirect_uri' => REDDIT_REDIRECT_URI, 'duration' => 'permanent',
+        'scope' => 'identity edit flair history modconfig modflair modlog modposts modwiki mysubreddits privatemessages read report save submit subscribe vote wikiedit wikiread'
+    ];
+    $auth_url = 'https://www.reddit.com/api/v1/authorize?' . http_build_query($params);
+    header('Location: ' . $auth_url);
+    exit;
 
-    if ($http_code >= 400) {
-        return ['error' => true, 'code' => $http_code, 'message' => json_decode($response, true)];
-    }
-    return json_decode($response, true);
+} elseif ($provider === 'notion') {
+    $_SESSION['oauth_provider'] = 'notion';
+    $params = [
+        'client_id' => NOTION_CLIENT_ID, 'response_type' => 'code', 'owner' => 'user',
+        'redirect_uri' => NOTION_REDIRECT_URI, 'state' => $state,
+    ];
+    $auth_url = 'https://api.notion.com/v1/oauth/authorize?' . http_build_query($params);
+    header('Location: ' . $auth_url);
+    exit;
+
+} elseif ($provider === 'dropbox') {
+    $_SESSION['oauth_provider'] = 'dropbox';
+    $code_verifier = rtrim(strtr(base64_encode(random_bytes(32)), '+/', '-_'), '=');
+    $_SESSION['dropbox_code_verifier'] = $code_verifier;
+    $code_challenge = rtrim(strtr(base64_encode(hash('sha256', $code_verifier, true)), '+/', '-_'), '=');
+    $scopes = ['account_info.read', 'files.metadata.read', 'files.content.read', 'files.content.write'];
+    $params = [
+        'client_id' => DROPBOX_APP_KEY, 'response_type' => 'code', 'redirect_uri' => DROPBOX_REDIRECT_URI,
+        'state' => $state, 'token_access_type' => 'offline', 'code_challenge_method' => 'S256',
+        'code_challenge' => $code_challenge, 'scope' => implode(' ', $scopes),
+    ];
+    $auth_url = 'https://www.dropbox.com/oauth2/authorize?' . http_build_query($params);
+    header('Location: ' . $auth_url);
+    exit;
+
+} elseif ($provider === 'github') {
+    $_SESSION['oauth_provider'] = 'github';
+    // For GitHub Apps, permissions are handled during installation, not in the auth URL.
+    $params = [
+        'client_id' => GITHUB_CLIENT_ID,
+        'redirect_uri' => GITHUB_REDIRECT_URI,
+        'state' => $state,
+    ];
+    $auth_url = 'https://github.com/login/oauth/authorize?' . http_build_query($params);
+    header('Location: ' . $auth_url);
+    exit;
 }
 
-$action = $_GET['action'] ?? '';
-
-try {
-    $stmt = $pdo->prepare("SELECT access_token FROM user_integrations WHERE user_id = ? AND provider = 'github'");
-    $stmt->execute([$_SESSION['user_id']]);
-    $integration = $stmt->fetch();
-
-    if (!$integration) throw new Exception("GitHub integration not found.", 404);
-    
-    $access_token = decrypt_token($integration['access_token']);
-
-    if ($action === 'dashboard_data') {
-        $user_info = makeGitHubApiRequest('/user', $access_token);
-        if (isset($user_info['error'])) throw new Exception('Failed to fetch user data.', $user_info['code']);
-
-        $repos = makeGitHubApiRequest('/user/repos?sort=pushed&per_page=5', $access_token);
-        
-        echo json_encode([
-            'success' => true,
-            'stats' => [
-                'name' => $user_info['name'] ?? $user_info['login'],
-                'login' => $user_info['login'],
-                'avatar_url' => $user_info['avatar_url'],
-                'public_repos' => $user_info['public_repos'],
-                'followers' => $user_info['followers'],
-                'following' => $user_info['following']
-            ],
-            'recent_repos' => $repos ?? []
-        ]);
-    }
-    elseif ($action === 'list_repos') {
-        $page = $_GET['page'] ?? 1;
-        $repos = makeGitHubApiRequest("/user/repos?sort=updated&per_page=100&page={$page}", $access_token);
-        if (isset($repos['error'])) throw new Exception('Failed to list repositories.', $repos['code']);
-        echo json_encode(['success' => true, 'data' => $repos]);
-    }
-    else {
-        throw new Exception("Invalid action.", 400);
-    }
-
-} catch (Exception $e) {
-    http_response_code($e->getCode() > 0 ? $e->getCode() : 500);
-    echo json_encode(['success' => false, 'error' => $e->getMessage()]);
-}
+echo 'Invalid provider specified.';
+exit;
 ?>
