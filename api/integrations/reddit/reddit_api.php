@@ -64,30 +64,44 @@ try {
         if (isset($me_data['error'])) throw new Exception('Failed to fetch user data from Reddit.', $me_data['code']);
 
         $username = $me_data['name'];
-        $stats = [
-            'karma' => number_format($me_data['total_karma']),
-            'upvoteRate' => 'N/A', // This is not directly available via API
-            'followerGrowth' => 'N/A' // This is not directly available via API
-        ];
         
-        // 2. Get User's Top 5 Posts (last month)
+        // 2. Get User's Top Posts (last month) to calculate stats
         $posts_data = makeRedditApiRequest("/user/{$username}/submitted?sort=top&t=month&limit=100", $access_token);
         if (isset($posts_data['error'])) throw new Exception('Failed to fetch user posts.', $posts_data['code']);
         
         $topPosts = [];
+        $total_upvote_ratio = 0;
+        $total_comments = 0;
+        $post_count = 0;
+
         if (isset($posts_data['data']['children'])) {
             foreach ($posts_data['data']['children'] as $post) {
-                $topPosts[] = [
-                    'id' => $post['data']['id'],
-                    'title' => $post['data']['title'],
-                    'subreddit' => $post['data']['subreddit_name_prefixed'],
-                    'upvotes' => number_format($post['data']['score']),
-                    'comments' => number_format($post['data']['num_comments'])
-                ];
+                $post_count++;
+                $total_upvote_ratio += $post['data']['upvote_ratio'];
+                $total_comments += $post['data']['num_comments'];
+                
+                // Only add to the display list if it's one of the top 5
+                if (count($topPosts) < 5) {
+                    $topPosts[] = [
+                        'id' => $post['data']['id'],
+                        'title' => $post['data']['title'],
+                        'subreddit' => $post['data']['subreddit_name_prefixed'],
+                        'upvotes' => number_format($post['data']['score']),
+                        'comments' => number_format($post['data']['num_comments'])
+                    ];
+                }
             }
         }
-        // Ensure we only return the top 5
-        $topPosts = array_slice($topPosts, 0, 5);
+
+        // Calculate custom stats
+        $avg_upvote_rate = ($post_count > 0) ? round(($total_upvote_ratio / $post_count) * 100, 1) . '%' : 'N/A';
+        $avg_comments = ($post_count > 0) ? round($total_comments / $post_count, 1) : 'N/A';
+
+        $stats = [
+            'karma' => number_format($me_data['total_karma']),
+            'averageUpvoteRate' => $avg_upvote_rate,
+            'averageComments' => $avg_comments
+        ];
 
         // 3. Get Custom Trending Data
         $trending_subreddits = ['funny', 'AskReddit', 'gaming', 'aww', 'Music', 'pics', 'science', 'worldnews', 'todayilearned', 'movies', 'memes', 'news', 'space'];
@@ -99,17 +113,12 @@ try {
             }
         }
         
-        // Sort all collected posts by score
-        usort($all_trending_posts, function($a, $b) {
-            return $b['data']['score'] <=> $a['data']['score'];
-        });
-
-        // Get the top 7 for the chart
+        usort($all_trending_posts, fn($a, $b) => $b['data']['score'] <=> $a['data']['score']);
         $top_trending = array_slice($all_trending_posts, 0, 7);
 
         $trendingData = [
-            'labels' => array_map(function($post) { return $post['data']['title']; }, $top_trending),
-            'scores' => array_map(function($post) { return $post['data']['score']; }, $top_trending)
+            'labels' => array_map(fn($post) => $post['data']['title'], $top_trending),
+            'scores' => array_map(fn($post) => $post['data']['score'], $top_trending)
         ];
 
         echo json_encode([
