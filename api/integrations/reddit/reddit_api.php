@@ -2,7 +2,8 @@
 // api/integrations/reddit/reddit_api.php
 session_start();
 require_once '../../auth/db_connect.php';
-require_once '../encryption.php';
+require_once '../../integrations/config.php';
+require_once '../../integrations/encryption.php';
 
 header('Content-Type: application/json');
 
@@ -12,136 +13,144 @@ if (!isset($_SESSION['user_id'])) {
     exit;
 }
 
-$user_id = $_SESSION['user_id'];
-$action = $_GET['action'] ?? '';
-
-// --- 1. Fetch and Decrypt the Access Token ---
-try {
-    $stmt = $pdo->prepare("SELECT access_token FROM user_integrations WHERE user_id = ? AND provider = 'reddit'");
-    $stmt->execute([$user_id]);
-    $integration = $stmt->fetch();
-
-    if (!$integration) {
-        http_response_code(404);
-        echo json_encode(['success' => false, 'error' => 'Reddit integration not found for this user.']);
-        exit;
-    }
-
-    $access_token = decrypt_token($integration['access_token']);
-} catch (PDOException $e) {
-    http_response_code(500);
-    echo json_encode(['success' => false, 'error' => 'Database error: ' . $e->getMessage()]);
-    exit;
-}
-
-// --- 2. Generic function to call Reddit API ---
-function callRedditApi($url, $token, $method = 'GET', $post_fields = []) {
-    $ch = curl_init($url);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+// --- Helper function to make authenticated requests to the Reddit API ---
+function makeRedditApiRequest($endpoint, $access_token, $method = 'GET', $post_fields = []) {
+    $api_url = 'https://oauth.reddit.com' . $endpoint;
+    
+    $ch = curl_init();
+    curl_setopt($ch, CURLOPT_URL, $api_url);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
     curl_setopt($ch, CURLOPT_HTTPHEADER, [
-        'Authorization: bearer ' . $token,
-        'User-Agent: BN-Workspace/1.0'
+        'Authorization: bearer ' . $access_token,
+        'User-Agent: BlacnovaWorkspace/1.0'
     ]);
-    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 20);
 
     if ($method === 'POST') {
-        curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_POST, 1);
         curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($post_fields));
     }
-
+    
     $response = curl_exec($ch);
     $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     curl_close($ch);
-    
-    if ($http_code >= 300) {
-        return ['error' => true, 'http_code' => $http_code, 'response' => json_decode($response, true)];
+
+    if ($http_code >= 400) {
+        return ['error' => true, 'code' => $http_code, 'message' => json_decode($response, true)];
     }
-    
+
     return json_decode($response, true);
 }
 
-// --- 3. Handle Different Actions ---
 
-if ($action === 'dashboard_data') {
-    // --- Fetch User Profile Data ---
-    $me_data = callRedditApi('https://oauth.reddit.com/api/v1/me', $access_token);
-    if (isset($me_data['error'])) {
-        http_response_code($me_data['http_code']);
-        echo json_encode(['success' => false, 'error' => 'Invalid or expired Reddit token.', 'details' => $me_data['response']]);
-        exit;
+// --- Main Logic ---
+$action = $_GET['action'] ?? '';
+
+try {
+    // --- Fetch the user's encrypted access token from the database ---
+    $stmt = $pdo->prepare("SELECT access_token FROM user_integrations WHERE user_id = ? AND provider = 'reddit'");
+    $stmt->execute([$_SESSION['user_id']]);
+    $integration = $stmt->fetch();
+
+    if (!$integration) {
+        throw new Exception("Reddit integration not found for this user.", 404);
     }
-    $username = $me_data['name'];
-    $total_karma = $me_data['total_karma'];
 
-    // --- Fetch User's Top Posts ---
-    $overview_data = callRedditApi("https://oauth.reddit.com/user/{$username}/overview?sort=top&limit=5&t=month", $access_token);
-    $top_posts = [];
-    if (isset($overview_data['data']['children'])) {
-        foreach ($overview_data['data']['children'] as $item) {
-            if ($item['kind'] === 't3') { 
-                $post = $item['data'];
-                $top_posts[] = ['id' => $post['id'], 'title' => $post['title'], 'subreddit' => $post['subreddit_name_prefixed'], 'upvotes' => number_format($post['score']), 'comments' => number_format($post['num_comments'])];
+    $access_token = decrypt_token($integration['access_token']);
+
+    // --- Action: Fetch all data for the main dashboard ---
+    if ($action === 'dashboard_data') {
+        // 1. Get User Account Info
+        $me_data = makeRedditApiRequest('/api/v1/me', $access_token);
+        if (isset($me_data['error'])) throw new Exception('Failed to fetch user data from Reddit.', $me_data['code']);
+
+        $username = $me_data['name'];
+        $stats = [
+            'karma' => number_format($me_data['total_karma']),
+            'upvoteRate' => 'N/A', // This is not directly available via API
+            'followerGrowth' => 'N/A' // This is not directly available via API
+        ];
+        
+        // 2. Get User's Top 5 Posts (last month)
+        $posts_data = makeRedditApiRequest("/user/{$username}/submitted?sort=top&t=month&limit=100", $access_token);
+        if (isset($posts_data['error'])) throw new Exception('Failed to fetch user posts.', $posts_data['code']);
+        
+        $topPosts = [];
+        if (isset($posts_data['data']['children'])) {
+            foreach ($posts_data['data']['children'] as $post) {
+                $topPosts[] = [
+                    'id' => $post['data']['id'],
+                    'title' => $post['data']['title'],
+                    'subreddit' => $post['data']['subreddit_name_prefixed'],
+                    'upvotes' => number_format($post['data']['score']),
+                    'comments' => number_format($post['data']['num_comments'])
+                ];
             }
         }
-    }
-    
-    // --- Fetch Trending Data ---
-    $trending_subreddits = ['AskReddit', 'gaming', 'science', 'worldnews', 'movies', 'funny', 'todayilearned', 'pics', 'IAmA', 'wallstreetbets'];
-    $trending_posts = [];
-    foreach($trending_subreddits as $sub) {
-        $sub_data = callRedditApi("https://oauth.reddit.com/r/{$sub}/top?t=day&limit=1", $access_token);
-        if (isset($sub_data['data']['children'][0])) {
-            $trending_posts[] = $sub_data['data']['children'][0]['data'];
+        // Ensure we only return the top 5
+        $topPosts = array_slice($topPosts, 0, 5);
+
+        // 3. Get Custom Trending Data
+        $trending_subreddits = ['funny', 'AskReddit', 'gaming', 'aww', 'Music', 'pics', 'science', 'worldnews', 'todayilearned', 'movies', 'memes', 'news', 'space'];
+        $all_trending_posts = [];
+        foreach ($trending_subreddits as $sub) {
+            $trending_data = makeRedditApiRequest("/r/{$sub}/top?t=day&limit=5", $access_token);
+            if (isset($trending_data['data']['children'])) {
+                $all_trending_posts = array_merge($all_trending_posts, $trending_data['data']['children']);
+            }
         }
-    }
-    
-    $trending_data_for_chart = ['labels' => [], 'scores' => []];
-    if (!empty($trending_posts)) {
-        usort($trending_posts, function($a, $b) {
-            return $b['score'] <=> $a['score'];
-        });
-        $top_trending = array_slice($trending_posts, 0, 5);
         
-        $trending_data_for_chart['labels'] = array_column($top_trending, 'title');
-        $trending_data_for_chart['scores'] = array_column($top_trending, 'score');
+        // Sort all collected posts by score
+        usort($all_trending_posts, function($a, $b) {
+            return $b['data']['score'] <=> $a['data']['score'];
+        });
+
+        // Get the top 7 for the chart
+        $top_trending = array_slice($all_trending_posts, 0, 7);
+
+        $trendingData = [
+            'labels' => array_map(function($post) { return $post['data']['title']; }, $top_trending),
+            'scores' => array_map(function($post) { return $post['data']['score']; }, $top_trending)
+        ];
+
+        echo json_encode([
+            'success' => true,
+            'stats' => $stats,
+            'topPosts' => $topPosts,
+            'trendingData' => $trendingData
+        ]);
     }
-    
+    // --- Action: Submit a new post ---
+    elseif ($action === 'submit_post' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+        $input = json_decode(file_get_contents('php://input'), true);
+        
+        $post_fields = [
+            'sr' => $input['subreddit'],
+            'title' => $input['title'],
+            'text' => $input['content'],
+            'kind' => 'self',
+            'api_type' => 'json'
+        ];
 
-    // --- Combine and return the data ---
-    $dashboard_data = [
-        'success' => true,
-        'stats' => ['karma' => number_format($total_karma), 'upvoteRate' => 'N/A', 'followerGrowth' => 'N/A'],
-        'topPosts' => $top_posts,
-        'trendingData' => $trending_data_for_chart
-    ];
-    echo json_encode($dashboard_data);
+        $result = makeRedditApiRequest('/api/submit', $access_token, 'POST', $post_fields);
 
-} elseif ($action === 'submit_post') {
-    $post_data = json_decode(file_get_contents('php://input'), true);
+        if (isset($result['error'])) {
+             throw new Exception('Reddit API error: ' . ($result['message']['json']['errors'][0][1] ?? 'Unknown error'), $result['code']);
+        }
 
-    $api_params = [
-        'sr' => str_replace('r/', '', $post_data['subreddit']), // Ensure 'r/' is removed
-        'title' => $post_data['title'],
-        'text' => $post_data['content'],
-        'kind' => 'self',
-        'api_type' => 'json'
-    ];
-
-    $result = callRedditApi('https://oauth.reddit.com/api/submit', $access_token, 'POST', $api_params);
-
-    if (isset($result['error'])) {
-        http_response_code($result['http_code']);
-        echo json_encode(['success' => false, 'error' => 'Reddit API Error', 'details' => $result['response']]);
-    } elseif (isset($result['json']['errors']) && count($result['json']['errors']) > 0) {
-        http_response_code(400);
-        echo json_encode(['success' => false, 'error' => 'Validation Error', 'details' => $result['json']['errors']]);
-    } else {
+        if (isset($result['json']['errors']) && count($result['json']['errors']) > 0) {
+             throw new Exception('Failed to post: ' . $result['json']['errors'][0][1]);
+        }
+        
         echo json_encode(['success' => true, 'data' => $result]);
     }
-} else {
-    http_response_code(422);
-    echo json_encode(['success' => false, 'error' => 'No valid action specified.']);
+    else {
+        throw new Exception("Invalid action specified.", 400);
+    }
+
+} catch (Exception $e) {
+    http_response_code($e->getCode() > 0 ? $e->getCode() : 500);
+    echo json_encode(['success' => false, 'error' => $e->getMessage()]);
 }
+
 ?>
 
