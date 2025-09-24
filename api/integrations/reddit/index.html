@@ -79,9 +79,13 @@
             height: 1.2rem;
             background-color: var(--primary);
             animation: blink 0.7s infinite;
+            vertical-align: middle;
         }
         @keyframes blink {
             50% { opacity: 0; }
+        }
+        .prose ul {
+            list-style-position: inside;
         }
     </style>
 </head>
@@ -262,7 +266,8 @@
 
                 async loadApiKey() {
                     try {
-                        const response = await fetch(`./key_handler.php?t=${Date.now()}`);
+                        // **MODIFIED**: Path updated to the centralized auth folder
+                        const response = await fetch(`../../auth/key_handler.php?t=${Date.now()}`);
                         if (!response.ok) {
                            throw new Error(`Could not fetch API key. Server responded with status ${response.status}`);
                         }
@@ -279,6 +284,7 @@
                     }
                 },
 
+                // ... (loadDashboardData and postToReddit methods remain the same) ...
                 async loadDashboardData() {
                     this.dashboardLoading = true;
                     try {
@@ -339,7 +345,6 @@
                         }
                     }
                 },
-
                 async aiAction(type, inputData) {
                     if (!this.apiKey) {
                         alert('The AI API Key is not configured. AI features are disabled.');
@@ -376,7 +381,7 @@
                                 if (!inputData) { this.isLoading = false; return; }
                                 this.analyzer.analyzedSubreddit = inputData;
                                 systemMessage = "You are a Reddit strategist. Your purpose is to provide a detailed analysis of a subreddit, offering actionable insights for a content creator. Your analysis should be well-structured and easy to read.";
-                                prompt = `Perform a comprehensive analysis of the subreddit "${inputData}". Structure your response with the following HTML sections:\n\n<strong>Overall Summary:</strong> A brief, one-paragraph overview.\n<strong>Key Topics & Themes:</strong> A bulleted list of common subjects.\n<strong>Community Vibe & Tone:</strong> Describe the typical user attitude and communication style.\n<strong>Content Opportunities:</strong> A bulleted list of 3-5 specific, creative content ideas that would perform well in this community.`;
+                                prompt = `Perform a comprehensive analysis of the subreddit "${inputData}". Structure your response with the following sections using markdown:\n\n**Overall Summary:** A brief, one-paragraph overview.\n**Key Topics & Themes:** A bulleted list of common subjects.\n**Community Vibe & Tone:** Describe the typical user attitude and communication style.\n**Content Opportunities:** A bulleted list of 3-5 specific, creative content ideas that would perform well in this community.`;
                                 targetElementId = 'analyzer-results-container';
                                 this.analyzer.result = ' '; // Clear previous results
                                 break;
@@ -417,6 +422,25 @@
                     }
                 },
                 
+                // **NEW**: Helper function to format AI response from markdown to HTML
+                formatAIResponse(text) {
+                    // Convert **bold** to <strong>
+                    let formattedText = text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+                    // Convert *italic* to <em>
+                    formattedText = formattedText.replace(/\*(.*?)\*/g, '<em>$1</em>');
+                    // Convert bullet points (* or -) to <ul><li>
+                    formattedText = formattedText.replace(/^\s*[\*-]\s*(.*)$/gm, '<li>$1</li>');
+                    formattedText = formattedText.replace(/<\/li>\n<li>/g, '</li><li>'); // clean up newlines between list items
+                    formattedText = formattedText.replace(/(<li>.*<\/li>)/s, '<ul>$1</ul>');
+                    // Convert newlines to <br> for non-list items
+                    formattedText = formattedText.replace(/\n/g, '<br>');
+                    // Clean up extra breaks around lists
+                    formattedText = formattedText.replace(/<br><ul>/g, '<ul>');
+                    formattedText = formattedText.replace(/<\/ul><br>/g, '</ul>');
+                    
+                    return formattedText;
+                },
+
                 async streamAIResponse(prompt, systemMessage, elementId, actionType) {
                     let targetElement;
                     if (actionType === 'improve' || actionType === 'generate') {
@@ -482,10 +506,11 @@
                                         if (chunk.choices && chunk.choices[0].delta && chunk.choices[0].delta.content) {
                                             const content = chunk.choices[0].delta.content;
                                             fullResponse += content;
+                                            // **MODIFIED**: Use the formatter before rendering
                                             if(targetElement) {
-                                                targetElement.innerHTML = fullResponse + cursor;
+                                                targetElement.innerHTML = this.formatAIResponse(fullResponse) + cursor;
                                             } else {
-                                                 this.composer.content = fullResponse;
+                                                 this.composer.content = fullResponse; // Textarea doesn't need HTML formatting
                                             }
                                         }
                                     } catch (e) {
@@ -502,8 +527,9 @@
                              this.composer.content = `AI Error: ${error.message}`;
                          }
                     } finally {
+                         // **MODIFIED**: Use the formatter for the final render
                         if(targetElement) {
-                            targetElement.innerHTML = fullResponse; // Remove cursor
+                            targetElement.innerHTML = this.formatAIResponse(fullResponse); // Remove cursor
                             if (actionType === 'analyze') this.analyzer.result = fullResponse;
                             if (actionType === 'summarize') this.summarizer.result = fullResponse;
                         }
