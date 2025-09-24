@@ -13,25 +13,27 @@ if (!isset($_SESSION['user_id'])) {
     exit;
 }
 
-// Helper function to make requests to Dropbox API
-function makeDropboxApiRequest($endpoint, $access_token, $body = null) {
-    $api_url = 'https://api.dropboxapi.com/2' . $endpoint;
+// Advanced Helper function for Dropbox API
+function makeDropboxApiRequest($endpoint, $access_token, $body = null, $is_content_upload = false, $is_content_download = false) {
+    $base_url = $is_content_upload || $is_content_download ? 'https://content.dropboxapi.com/2' : 'https://api.dropboxapi.com/2';
+    $api_url = $base_url . $endpoint;
     
     $ch = curl_init();
     curl_setopt($ch, CURLOPT_URL, $api_url);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
     curl_setopt($ch, CURLOPT_POST, 1);
     
-    $headers = [
-        'Authorization: Bearer ' . $access_token,
-        'Content-Type: application/json',
-    ];
+    $headers = ['Authorization: Bearer ' . $access_token];
     
-    if ($body) {
-        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($body));
+    if ($is_content_upload) {
+        $api_args = json_encode($body);
+        $headers[] = 'Dropbox-API-Arg: ' . $api_args;
+        $headers[] = 'Content-Type: application/octet-stream';
+        // The actual file content will be set later from php://input
     } else {
-        // Dropbox RPC endpoints that take no arguments expect 'null' as the body.
-        curl_setopt($ch, CURLOPT_POSTFIELDS, 'null');
+        $headers[] = 'Content-Type: application/json';
+        $post_data = $body ? json_encode($body) : 'null';
+        curl_setopt($ch, CURLOPT_POSTFIELDS, $post_data);
     }
     
     curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
@@ -47,7 +49,6 @@ function makeDropboxApiRequest($endpoint, $access_token, $body = null) {
     return json_decode($response, true);
 }
 
-
 // Main Logic
 $action = $_GET['action'] ?? '';
 
@@ -61,23 +62,102 @@ try {
     }
     $access_token = decrypt_token($integration['access_token']);
 
-    if ($action === 'get_account_info') {
-        $info = makeDropboxApiRequest('/users/get_current_account', $access_token);
-        if (isset($info['error'])) throw new Exception('Failed to fetch user data from Dropbox.', $info['code']);
-        echo json_encode(['success' => true, 'data' => $info]);
-    } 
-    elseif ($action === 'list_files') {
-        $path = $_GET['path'] ?? ''; // Dropbox uses empty string for root
-        $body = [
-            'path' => $path,
-            'recursive' => false,
-            'include_media_info' => false,
-            'include_deleted' => false,
-            'include_has_explicit_shared_members' => false
+    if ($action === 'dashboard_data') {
+        $account_info = makeDropboxApiRequest('/users/get_current_account', $access_token);
+        if (isset($account_info['error'])) throw new Exception('Failed to fetch user account.', $account_info['code']);
+        
+        $space_usage = makeDropboxApiRequest('/users/get_space_usage', $access_token);
+        if (isset($space_usage['error'])) throw new Exception('Failed to fetch space usage.', $space_usage['code']);
+
+        // Fetch recent files - this is an example using search.
+        $recent_files_body = [
+            'query' => '*', // Query for everything
+            'options' => [
+                'max_results' => 5,
+                'order_by' => 'last_modified_time',
+            ],
         ];
-        $files = makeDropboxApiRequest('/files/list_folder', $access_token, $body);
+        // Note: Search can be slow to index. A more robust solution might involve tracking recent activity.
+        // For this dashboard, we'll list the root folder as "recent".
+        $recent_files = makeDropboxApiRequest('/files/list_folder', $access_token, ['path' => '']);
+
+
+        echo json_encode([
+            'success' => true, 
+            'stats' => [
+                'name' => $account_info['name']['display_name'],
+                'email' => $account_info['email'],
+                'used' => $space_usage['used'],
+                'allocated' => $space_usage['allocation']['allocated'],
+            ],
+            'recent_files' => $recent_files['entries'] ?? []
+        ]);
+    }
+    elseif ($action === 'list_files') {
+        $path = $_GET['path'] ?? '';
+        $files = makeDropboxApiRequest('/files/list_folder', $access_token, ['path' => $path]);
         if (isset($files['error'])) throw new Exception('Failed to list files.', $files['code']);
         echo json_encode(['success' => true, 'data' => $files]);
+    }
+    elseif ($action === 'upload_file') {
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') throw new Exception("Invalid request method", 405);
+        
+        $path = $_GET['path'] ?? '/';
+        $filename = $_GET['filename'] ?? 'uploaded_file';
+        $full_path = rtrim($path, '/') . '/' . $filename;
+
+        $upload_args = [
+            'path' => $full_path,
+            'mode' => 'add',
+            'autorename' => true,
+            'mute' => false
+        ];
+
+        // The makeDropboxApiRequest function is not suitable for direct file upload from php://input this way.
+        // We need a direct cURL call here.
+        $ch = curl_init('https://content.dropboxapi.com/2/files/upload');
+        curl_setopt($ch, CURLOPT_HTTPHEADER, [
+            'Authorization: Bearer ' . $access_token,
+            'Dropbox-API-Arg: ' . json_encode($upload_args),
+            'Content-Type: application/octet-stream'
+        ]);
+        curl_setopt($ch, CURLOPT_POST, true);
+        
+        // Stream the file directly from the request body to Dropbox
+        $request_body = fopen('php://input', 'r');
+        curl_setopt($ch, CURLOPT_INFILE, $request_body);
+        curl_setopt($ch, CURLOPT_INFILESIZE, (int)$_SERVER['CONTENT_LENGTH']);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+
+        $response = curl_exec($ch);
+        $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+        
+        if ($http_code >= 400) {
+            throw new Exception("Upload failed: " . $response, $http_code);
+        }
+        
+        echo $response;
+    }
+    elseif ($action === 'get_temporary_link') {
+        $path = $_GET['path'] ?? '';
+        if (empty($path)) throw new Exception("File path is required.", 400);
+        
+        $link_data = makeDropboxApiRequest('/files/get_temporary_link', $access_token, ['path' => $path]);
+        if (isset($link_data['error'])) throw new Exception('Failed to get temporary link.', $link_data['code']);
+
+        echo json_encode(['success' => true, 'link' => $link_data['link']]);
+    }
+    elseif ($action === 'delete_item') {
+         if ($_SERVER['REQUEST_METHOD'] !== 'POST') throw new Exception("Invalid request method", 405);
+         $input = json_decode(file_get_contents('php://input'), true);
+         $path = $input['path'] ?? '';
+         if (empty($path)) throw new Exception("Path is required for deletion.", 400);
+
+         $result = makeDropboxApiRequest('/files/delete_v2', $access_token, ['path' => $path]);
+         if (isset($result['error'])) throw new Exception('Failed to delete item.', $result['code']);
+
+         echo json_encode(['success' => true, 'data' => $result]);
     }
     else {
         throw new Exception("Invalid action specified.", 400);
