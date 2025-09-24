@@ -14,7 +14,7 @@ if (!isset($_SESSION['user_id'])) {
 }
 
 // --- Helper function to make authenticated requests to the Notion API ---
-function makeNotionApiRequest($endpoint, $access_token, $method = 'POST', $body = [], $is_search = false) {
+function makeNotionApiRequest($endpoint, $access_token, $method = 'POST', $body = []) {
     $api_url = 'https://api.notion.com/v1' . $endpoint;
     
     $ch = curl_init();
@@ -64,6 +64,7 @@ try {
 
     // --- Action: Fetch all data for the main dashboard ---
     if ($action === 'dashboard_data') {
+        // ... (existing dashboard_data logic remains the same)
         // 1. Get User Info
         $user_info = makeNotionApiRequest('/users/me', $access_token, 'GET');
         if (isset($user_info['error'])) throw new Exception('Failed to fetch user data from Notion.', $user_info['code']);
@@ -91,7 +92,7 @@ try {
 
         $recent_pages = [];
         foreach($recent_pages_results['results'] as $page) {
-             $title_property = $page['properties']['title'] ?? null;
+             $title_property = $page['properties']['title'] ?? ($page['properties']['Name'] ?? null);
              $title = 'Untitled';
              if ($title_property && $title_property['type'] === 'title' && !empty($title_property['title'])) {
                  $title = $title_property['title'][0]['plain_text'];
@@ -115,6 +116,7 @@ try {
     }
     // --- Action: List all databases the integration has access to ---
     elseif ($action === 'list_databases') {
+        // ... (existing list_databases logic remains the same)
          $db_search_body = [
             'filter' => ['property' => 'object', 'value' => 'database'],
             'page_size' => 100
@@ -137,16 +139,29 @@ try {
     }
     // --- Action: Create a new page in a database ---
     elseif ($action === 'create_page' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+        // ... (existing create_page logic remains the same)
         $input = json_decode(file_get_contents('php://input'), true);
 
         if (empty($input['database_id']) || empty($input['title'])) {
             throw new Exception("Database ID and Title are required.", 400);
         }
 
+        // Determine the title property name by fetching database schema
+        $db_info = makeNotionApiRequest('/databases/' . $input['database_id'], $access_token, 'GET');
+        $title_prop_name = 'title'; // default
+        if (isset($db_info['properties'])) {
+            foreach ($db_info['properties'] as $key => $prop) {
+                if ($prop['type'] === 'title') {
+                    $title_prop_name = $key;
+                    break;
+                }
+            }
+        }
+
         $page_body = [
             'parent' => ['database_id' => $input['database_id']],
             'properties' => [
-                'title' => [ // Assumes the title property is named 'title' or 'Name'
+                $title_prop_name => [
                     'title' => [['text' => ['content' => $input['title']]]]
                 ]
             ],
@@ -168,6 +183,54 @@ try {
 
         echo json_encode(['success' => true, 'data' => $result]);
     }
+    // --- Action: Get content of a specific database ---
+    elseif ($action === 'get_database_content') {
+        $database_id = $_GET['database_id'] ?? '';
+        if (empty($database_id)) throw new Exception("Database ID is required.", 400);
+
+        $db_content = makeNotionApiRequest("/databases/{$database_id}/query", $access_token, 'POST');
+        if (isset($db_content['error'])) throw new Exception("Failed to get database content.", $db_content['code']);
+
+        $pages = [];
+         foreach($db_content['results'] as $page) {
+             $title = 'Untitled';
+             // Find the title property dynamically
+             foreach($page['properties'] as $prop) {
+                 if ($prop['type'] === 'title' && !empty($prop['title'])) {
+                     $title = $prop['title'][0]['plain_text'];
+                     break;
+                 }
+             }
+
+            $pages[] = [
+                'id' => $page['id'],
+                'title' => $title,
+                'url' => $page['url'],
+                'last_edited' => (new DateTime($page['last_edited_time']))->format('M j, Y')
+            ];
+        }
+        echo json_encode(['success' => true, 'pages' => $pages]);
+    }
+    // --- Action: Get all text content from a page for summarization ---
+    elseif ($action === 'get_page_content') {
+        $page_id = $_GET['page_id'] ?? '';
+        if (empty($page_id)) throw new Exception("Page ID is required.", 400);
+
+        $blocks = makeNotionApiRequest("/blocks/{$page_id}/children?page_size=100", $access_token, 'GET');
+        if (isset($blocks['error'])) throw new Exception("Failed to get page content.", $blocks['code']);
+
+        $full_text = '';
+        foreach($blocks['results'] as $block) {
+            $type = $block['type'];
+            if (isset($block[$type]['rich_text']) && !empty($block[$type]['rich_text'])) {
+                foreach($block[$type]['rich_text'] as $text_part) {
+                    $full_text .= $text_part['plain_text'];
+                }
+                $full_text .= "\n"; // Add newline after each block
+            }
+        }
+        echo json_encode(['success' => true, 'content' => $full_text]);
+    }
     else {
         throw new Exception("Invalid action specified.", 400);
     }
@@ -178,3 +241,4 @@ try {
 }
 
 ?>
+
