@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Notion Tool - Blacnova Workspace</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body class="bg-gray-900 text-white font-sans">
+
+    <div class="container mx-auto p-8">
+        <header class="text-center mb-12">
+            <h1 class="text-5xl font-bold mb-2">Notion Integration</h1>
+            <p class="text-xl text-gray-400">Search your Notion pages directly from your workspace.</p>
+        </header>
+
+        <main id="app" class="max-w-4xl mx-auto">
+            <div class="mb-8">
+                <div class="relative">
+                    <input type="text" id="search-input" placeholder="Search for pages in Notion..." class="w-full bg-gray-800 border-2 border-gray-700 rounded-lg py-3 px-4 text-white placeholder-gray-500 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 transition duration-300">
+                    <i class="fas fa-search absolute right-4 top-1/2 -translate-y-1/2 text-gray-500"></i>
+                </div>
+            </div>
+
+            <div id="results-container" class="space-y-4">
+                </div>
+             <div id="loading-spinner" class="text-center py-8 hidden">
+                <i class="fas fa-spinner fa-spin text-4xl text-purple-500"></i>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const searchInput = document.getElementById('search-input');
+            const resultsContainer = document.getElementById('results-container');
+            const loadingSpinner = document.getElementById('loading-spinner');
+            let debounceTimer;
+
+            searchInput.addEventListener('input', () => {
+                clearTimeout(debounceTimer);
+                debounceTimer = setTimeout(() => {
+                    const query = searchInput.value;
+                    if (query.length > 2) {
+                        searchPages(query);
+                    } else {
+                        resultsContainer.innerHTML = '';
+                    }
+                }, 500); // 500ms debounce
+            });
+
+            async function searchPages(query) {
+                loadingSpinner.classList.remove('hidden');
+                resultsContainer.innerHTML = '';
+                try {
+                    const response = await fetch(`./notion_api.php?action=search_pages&query=${encodeURIComponent(query)}`);
+                    if(!response.ok) {
+                         const errorData = await response.json();
+                         throw new Error(errorData.error || `HTTP error! Status: ${response.status}`);
+                    }
+                    
+                    const data = await response.json();
+
+                    if (data.success) {
+                        displayResults(data.pages);
+                    } else {
+                        throw new Error(data.error || 'An unknown error occurred.');
+                    }
+                } catch (error) {
+                    console.error('Search Error:', error);
+                    resultsContainer.innerHTML = `<div class="bg-red-900/50 border border-red-700 text-red-300 p-4 rounded-lg text-center">${error.message}</div>`;
+                } finally {
+                     loadingSpinner.classList.add('hidden');
+                }
+            }
+
+            function displayResults(pages) {
+                if (pages.length === 0) {
+                    resultsContainer.innerHTML = '<p class="text-center text-gray-400">No pages found.</p>';
+                    return;
+                }
+
+                const html = pages.map(page => {
+                    const title = page.properties.title?.title[0]?.plain_text || 'Untitled';
+                    const icon = page.icon?.emoji || '<i class="far fa-file-alt"></i>';
+                    const url = page.url;
+                    const lastEdited = new Date(page.last_edited_time).toLocaleString();
+
+                    return `
+                        <a href="${url}" target="_blank" rel="noopener noreferrer" class="block bg-gray-800 hover:bg-gray-700 p-4 rounded-lg border border-gray-700 transition duration-300 transform hover:scale-[1.02]">
+                            <div class="flex items-center">
+                                <div class="text-2xl mr-4">${icon}</div>
+                                <div class="flex-1">
+                                    <h3 class="font-bold text-lg text-purple-400">${title}</h3>
+                                    <p class="text-sm text-gray-500">Last edited: ${lastEdited}</p>
+                                </div>
+                                <i class="fas fa-external-link-alt text-gray-500"></i>
+                            </div>
+                        </a>
+                    `;
+                }).join('');
+
+                resultsContainer.innerHTML = html;
+            }
+        });
+    </script>
+</body>
+</html>

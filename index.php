@@ -203,7 +203,7 @@
         { name: 'Google Docs', provider: 'google_docs', icon: 'fas fa-file-word', color: '#4285F4', enabled: false },
         { name: 'Google Sheets', provider: 'google_sheets', icon: 'fas fa-file-excel', color: '#34A853', enabled: false },
         { name: 'Google Forms', provider: 'google_forms', icon: 'fas fa-file-alt', color: '#7B1FA2', enabled: false },
-        { name: 'Notion', provider: 'notion', img: 'https://upload.wikimedia.org/wikipedia/commons/thumb/e/e9/Notion-logo.svg/1200px-Notion-logo.svg.png', color: '#ffffff', enabled: false },
+        { name: 'Notion', provider: 'notion', img: 'https://upload.wikimedia.org/wikipedia/commons/thumb/e/e9/Notion-logo.svg/1200px-Notion-logo.svg.png', color: '#ffffff', enabled: true, tool_url: './api/integrations/notion/index.html' },
         { name: 'Google Calendar', provider: 'google_calendar', icon: 'fas fa-calendar-alt', color: '#0F9D58', enabled: false },
         { name: 'Dropbox', provider: 'dropbox', icon: 'fab fa-dropbox', color: '#0061FF', enabled: false },
         { name: 'Google Drive', provider: 'google_drive', icon: 'fab fa-google-drive', color: '#1DA462', enabled: false }

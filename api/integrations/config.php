@@ -17,4 +17,13 @@ define('REDDIT_CLIENT_ID', 'k8zVPy-VzLzKS1XOETZhug');
 define('REDDIT_CLIENT_SECRET', 'JqI-5k4MW7bKjZYnPaiewdPYYOfj3A');
 define('REDDIT_REDIRECT_URI', ROOT_URL . 'api/integrations/callback.php');
 
+// --- Notion API Credentials ---
+// IMPORTANT: Replace these with the credentials from your Notion Integration
+define('NOTION_CLIENT_ID', 'YOUR_NOTION_CLIENT_ID');
+define('NOTION_CLIENT_SECRET', 'YOUR_NOTION_CLIENT_SECRET');
+define('NOTION_REDIRECT_URI', ROOT_URL . 'api/integrations/callback.php');
+
+// Note: The NOTION_KEY is expected to be an environment variable.
+// getenv('NOTION_KEY');
+
 ?>

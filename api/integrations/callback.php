@@ -12,7 +12,11 @@ if (empty($_GET['state']) || !isset($_SESSION['oauth_state']) || $_GET['state'] 
     header('Location: ' . ROOT_URL . '?integration_error=state_mismatch');
     exit;
 }
+
+$provider = $_SESSION['oauth_provider'] ?? '';
 unset($_SESSION['oauth_state']); // Clean up state
+unset($_SESSION['oauth_provider']);
+
 
 // Check for login
 if (!isset($_SESSION['user_id'])) {
@@ -20,7 +24,7 @@ if (!isset($_SESSION['user_id'])) {
     exit;
 }
 
-// Check if Reddit returned an error
+// Check if the provider returned an error
 if (isset($_GET['error'])) {
     header('Location: ' . ROOT_URL . '?integration_error=' . urlencode($_GET['error']));
     exit;
@@ -29,48 +33,82 @@ if (isset($_GET['error'])) {
 // --- 2. Exchange Authorization Code for Access Token ---
 if (isset($_GET['code'])) {
     $code = $_GET['code'];
+    $token_data = null;
 
-    $token_url = 'https://www.reddit.com/api/v1/access_token';
-    $post_data = [
-        'grant_type' => 'authorization_code',
-        'code' => $code,
-        'redirect_uri' => REDDIT_REDIRECT_URI,
-    ];
+    if ($provider === 'reddit') {
+        $token_url = 'https://www.reddit.com/api/v1/access_token';
+        $post_data = [
+            'grant_type' => 'authorization_code',
+            'code' => $code,
+            'redirect_uri' => REDDIT_REDIRECT_URI,
+        ];
+        $auth_header = REDDIT_CLIENT_ID . ':' . REDDIT_CLIENT_SECRET;
+        $user_agent = 'BN-Workspace/1.0';
 
-    $ch = curl_init($token_url);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_POST, true);
-    curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($post_data));
-    curl_setopt($ch, CURLOPT_USERPWD, REDDIT_CLIENT_ID . ':' . REDDIT_CLIENT_SECRET);
-    curl_setopt($ch, CURLOPT_HTTPHEADER, ['User-Agent: BN-Workspace/1.0']);
+        $ch = curl_init($token_url);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($post_data));
+        curl_setopt($ch, CURLOPT_USERPWD, $auth_header);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, ['User-Agent: ' . $user_agent]);
+        $response = curl_exec($ch);
+        curl_close($ch);
+        $token_data = json_decode($response, true);
 
-    $response = curl_exec($ch);
-    curl_close($ch);
+    } elseif ($provider === 'notion') {
+        $token_url = 'https://api.notion.com/v1/oauth/token';
+        $post_data = [
+            'grant_type' => 'authorization_code',
+            'code' => $code,
+            'redirect_uri' => NOTION_REDIRECT_URI,
+        ];
+        $auth_header = base64_encode(NOTION_CLIENT_ID . ':' . NOTION_CLIENT_SECRET);
 
-    $token_data = json_decode($response, true);
+        $ch = curl_init($token_url);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($post_data));
+        curl_setopt($ch, CURLOPT_HTTPHEADER, [
+            'Authorization: Basic ' . $auth_header,
+            'Content-Type: application/json',
+            'Notion-Version: 2022-06-28'
+        ]);
+        $response = curl_exec($ch);
+        curl_close($ch);
+        $token_data = json_decode($response, true);
+    }
+
 
     if (isset($token_data['access_token'])) {
         // --- 3. Save the Tokens to the Database ---
         $user_id = $_SESSION['user_id'];
-        $provider = 'reddit';
         $access_token = encrypt_token($token_data['access_token']);
-        $refresh_token = isset($token_data['refresh_token']) ? encrypt_token($token_data['refresh_token']) : null;
-        $scope = $token_data['scope'];
         
-        // Calculate expiry time
-        $expires_in = $token_data['expires_in']; // in seconds
-        $expires_at = (new DateTime())->add(new DateInterval('PT' . $expires_in . 'S'))->format('Y-m-d H:i:s');
+        // Provider-specific data
+        $refresh_token = null;
+        $scope = null;
+        $expires_at = null;
+        $provider_user_id = $token_data['owner']['user']['id'] ?? null;
 
+
+        if($provider === 'reddit'){
+            $refresh_token = isset($token_data['refresh_token']) ? encrypt_token($token_data['refresh_token']) : null;
+            $scope = $token_data['scope'];
+            $expires_in = $token_data['expires_in']; // in seconds
+            $expires_at = (new DateTime())->add(new DateInterval('PT' . $expires_in . 'S'))->format('Y-m-d H:i:s');
+        }
+        
         try {
             // Use an UPSERT query to either INSERT a new record or UPDATE an existing one
             $stmt = $pdo->prepare(
-                "INSERT INTO user_integrations (user_id, provider, access_token, refresh_token, expires_at, scope)
-                 VALUES (:user_id, :provider, :access_token, :refresh_token, :expires_at, :scope)
+                "INSERT INTO user_integrations (user_id, provider, access_token, refresh_token, expires_at, scope, provider_user_id)
+                 VALUES (:user_id, :provider, :access_token, :refresh_token, :expires_at, :scope, :provider_user_id)
                  ON DUPLICATE KEY UPDATE
                  access_token = VALUES(access_token),
                  refresh_token = VALUES(refresh_token),
                  expires_at = VALUES(expires_at),
                  scope = VALUES(scope),
+                 provider_user_id = VALUES(provider_user_id),
                  updated_at = NOW()"
             );
 
@@ -80,7 +118,8 @@ if (isset($_GET['code'])) {
                 ':access_token' => $access_token,
                 ':refresh_token' => $refresh_token,
                 ':expires_at' => $expires_at,
-                ':scope' => $scope
+                ':scope' => $scope,
+                ':provider_user_id' => $provider_user_id
             ]);
 
             // --- 4. Redirect back to the workspace with a success message ---
@@ -89,12 +128,12 @@ if (isset($_GET['code'])) {
 
         } catch (PDOException $e) {
             // Handle database errors
-             header('Location: ' . ROOT_URL . '?integration_error=db_error');
+             header('Location: ' . ROOT_URL . '?integration_error=db_error&message=' . urlencode($e->getMessage()));
              exit;
         }
 
     } else {
-        // Reddit did not return an access token
+        // The provider did not return an access token
         header('Location: ' . ROOT_URL . '?integration_error=token_exchange_failed');
         exit;
     }

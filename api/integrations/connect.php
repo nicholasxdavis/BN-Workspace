@@ -10,7 +10,7 @@ if (!isset($_SESSION['user_id'])) {
     exit;
 }
 
-// 2. Get the provider from the URL (e.g., ?provider=reddit)
+// 2. Get the provider from the URL
 $provider = $_GET['provider'] ?? '';
 
 if ($provider === 'reddit') {
@@ -31,6 +31,27 @@ if ($provider === 'reddit') {
     $auth_url = 'https://www.reddit.com/api/v1/authorize?' . http_build_query($params);
 
     // 5. Redirect the user to Reddit to authorize the app
+    header('Location: ' . $auth_url);
+    exit;
+
+} elseif ($provider === 'notion') {
+    // 3. Generate a random 'state' string for CSRF protection
+    $state = bin2hex(random_bytes(16));
+    $_SESSION['oauth_state'] = $state;
+    $_SESSION['oauth_provider'] = 'notion'; // Keep track of the provider
+
+    // 4. Build the Notion Authorization URL
+    $params = [
+        'client_id' => NOTION_CLIENT_ID,
+        'response_type' => 'code',
+        'owner' => 'user',
+        'redirect_uri' => NOTION_REDIRECT_URI,
+        'state' => $state,
+    ];
+
+    $auth_url = 'https://api.notion.com/v1/oauth/authorize?' . http_build_query($params);
+
+    // 5. Redirect the user to Notion to authorize the app
     header('Location: ' . $auth_url);
     exit;
 }
