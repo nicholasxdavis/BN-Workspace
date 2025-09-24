@@ -99,6 +99,10 @@
                 <i class="fas fa-file-lines w-6"></i>
                 <span>Content Summarizer</span>
             </a>
+            <a href="#" @click.prevent="activeTab = 'settings'" class="sidebar-link flex items-center px-4 py-2 rounded-lg" :class="{ 'active': activeTab === 'settings' }">
+                <i class="fas fa-cog w-6"></i>
+                <span>Settings</span>
+            </a>
         </nav>
         <div class="p-4 border-t border-[var(--border-color)]">
              <a href="../.." class="text-sm text-gray-400 hover:text-white transition-colors flex items-center"><i class="fas fa-arrow-left mr-2"></i> Back to Workspace</a>
@@ -115,17 +119,17 @@
                 <div class="bg-[var(--card-bg)] p-6 rounded-lg border border-[var(--border-color)]">
                     <h3 class="text-sm font-medium text-gray-400">Total Karma</h3>
                     <p class="text-3xl font-bold mt-2" x-text="stats.karma"></p>
-                    <p class="text-sm text-green-400 flex items-center mt-1"><i class="fas fa-arrow-up mr-1"></i> 12% last 30 days</p>
+                    <p class="text-sm text-green-400 flex items-center mt-1"><i class="fas fa-arrow-up mr-1"></i> 12% (mock)</p>
                 </div>
                 <div class="bg-[var(--card-bg)] p-6 rounded-lg border border-[var(--border-color)]">
                     <h3 class="text-sm font-medium text-gray-400">Average Upvote Rate</h3>
                     <p class="text-3xl font-bold mt-2" x-text="`${stats.upvoteRate}%`"></p>
-                    <p class="text-sm text-red-400 flex items-center mt-1"><i class="fas fa-arrow-down mr-1"></i> 2.5% last 30 days</p>
+                    <p class="text-sm text-red-400 flex items-center mt-1"><i class="fas fa-arrow-down mr-1"></i> 2.5% (mock)</p>
                 </div>
                 <div class="bg-[var(--card-bg)] p-6 rounded-lg border border-[var(--border-color)]">
                     <h3 class="text-sm font-medium text-gray-400">Follower Growth</h3>
                     <p class="text-3xl font-bold mt-2" x-text="stats.followerGrowth"></p>
-                     <p class="text-sm text-green-400 flex items-center mt-1"><i class="fas fa-arrow-up mr-1"></i> 8% last 30 days</p>
+                     <p class="text-sm text-green-400 flex items-center mt-1"><i class="fas fa-arrow-up mr-1"></i> 8% (mock)</p>
                 </div>
             </div>
 
@@ -134,7 +138,7 @@
                 <div class="lg:col-span-1 bg-[var(--card-bg)] p-6 rounded-lg border border-[var(--border-color)]">
                     <h3 class="text-xl font-bold mb-4">Trending for Business</h3>
                     <div x-show="isLoading" class="flex justify-center items-center h-48"><div class="loader"></div></div>
-                    <ul x-show="!isLoading" class="space-y-3">
+                    <ul x-show="!isLoading && trendingTopics.length > 0" class="space-y-3">
                         <template x-for="topic in trendingTopics" :key="topic">
                             <li class="flex items-center text-gray-300">
                                 <i class="fas fa-fire-flame-curved text-orange-500 mr-3"></i>
@@ -142,24 +146,27 @@
                             </li>
                         </template>
                     </ul>
+                     <p x-show="!isLoading && trendingTopics.length === 0" class="text-gray-400">Could not load trending topics.</p>
                 </div>
                 <!-- Top Performing Posts -->
                 <div class="lg:col-span-2 bg-[var(--card-bg)] p-6 rounded-lg border border-[var(--border-color)]">
-                    <h3 class="text-xl font-bold mb-4">Top Performing Posts</h3>
-                     <div class="space-y-4">
+                    <h3 class="text-xl font-bold mb-4">Your Top 5 Posts</h3>
+                     <div x-show="dashboardLoading" class="flex justify-center items-center h-48"><div class="loader"></div></div>
+                     <div x-show="!dashboardLoading && topPosts.length > 0" class="space-y-4">
                         <template x-for="post in topPosts" :key="post.id">
                              <div class="flex justify-between items-center p-3 bg-[#2a2a2a] rounded-lg">
                                 <div>
                                     <p class="font-semibold" x-text="post.title"></p>
                                     <p class="text-sm text-gray-400" x-text="post.subreddit"></p>
                                 </div>
-                                <div class="text-right">
+                                <div class="text-right flex-shrink-0 ml-4">
                                     <p class="font-bold text-green-400" x-text="`${post.upvotes} Upvotes`"></p>
                                     <p class="text-sm text-gray-400" x-text="`${post.comments} Comments`"></p>
                                 </div>
                             </div>
                         </template>
                     </div>
+                    <p x-show="!dashboardLoading && topPosts.length === 0" class="text-gray-400">No posts found or data could not be loaded.</p>
                 </div>
             </div>
         </div>
@@ -230,30 +237,74 @@
                 </div>
             </div>
         </div>
+        
+        <!-- Settings -->
+        <div x-show="activeTab === 'settings'" x-cloak>
+            <h2 class="text-3xl font-bold mb-6">Settings</h2>
+            <div class="bg-[var(--card-bg)] p-6 rounded-lg border border-[var(--border-color)] max-w-lg">
+                <label for="api-key" class="block text-sm font-medium mb-2">OpenRouter API Key</label>
+                <p class="text-xs text-gray-400 mb-2">Your API key is stored locally in your browser and is never sent to our servers.</p>
+                <input type="password" id="api-key" x-model="openRouterApiKey" class="form-input w-full px-4 py-2 rounded-lg" placeholder="sk-or-v1-...">
+                <div class="flex justify-end mt-4">
+                     <button @click="saveApiKey()" class="btn-primary px-6 py-2 rounded-lg font-bold">Save Key</button>
+                </div>
+            </div>
+        </div>
     </main>
 
     <script>
         function redditTool() {
             return {
                 activeTab: 'dashboard',
-                isLoading: false,
+                isLoading: false, // For AI actions
+                dashboardLoading: true, // For initial dashboard data
+                openRouterApiKey: '',
                 stats: {
-                    karma: '12,845',
-                    upvoteRate: '92.1',
-                    followerGrowth: '+156'
+                    karma: '...',
+                    upvoteRate: '...',
+                    followerGrowth: '...'
                 },
                 trendingTopics: [],
-                topPosts: [
-                    { id: 1, title: 'Unveiling Our New Line of Eco-Friendly Packaging', subreddit: 'r/sustainability', upvotes: '2.1k', comments: 142 },
-                    { id: 2, title: 'Case Study: How We Boosted Conversion by 30%', subreddit: 'r/marketing', upvotes: '1.8k', comments: 98 },
-                    { id: 3, title: 'AMA with our CEO on the Future of AI in SaaS', subreddit: 'r/technology', upvotes: '1.5k', comments: 451 },
-                ],
+                topPosts: [],
                 composer: { subreddit: '', title: '', content: '' },
                 analyzer: { subreddit: '', result: '' },
                 summarizer: { url: '', result: '' },
 
                 init() {
+                    this.loadApiKey();
+                    this.loadDashboardData();
                     this.aiAction('getTrends');
+                },
+                
+                loadApiKey() {
+                    this.openRouterApiKey = localStorage.getItem('openRouterApiKey') || '';
+                },
+
+                saveApiKey() {
+                    localStorage.setItem('openRouterApiKey', this.openRouterApiKey);
+                    alert('API Key saved!');
+                },
+
+                async loadDashboardData() {
+                    this.dashboardLoading = true;
+                    try {
+                        const response = await fetch('./reddit_api.php');
+                        if (!response.ok) {
+                            throw new Error(`Your Reddit session may have expired. Please try removing and re-adding the Reddit integration. (Status: ${response.status})`);
+                        }
+                        const data = await response.json();
+                        if (data.success) {
+                            this.stats = data.stats;
+                            this.topPosts = data.topPosts;
+                        } else {
+                            throw new Error(data.error || 'Failed to load dashboard data.');
+                        }
+                    } catch (error) {
+                        console.error("Dashboard Load Error:", error);
+                        alert(`Could not load your Reddit data. Error: ${error.message}`);
+                    } finally {
+                        this.dashboardLoading = false;
+                    }
                 },
 
                 aiAction(type, input = '') {
@@ -309,7 +360,7 @@
                             if (type === 'getTrends') {
                                 this.trendingTopics = ["AI in Automation", "Future of Remote Work", "Sustainable Tech Innovations", "Cybersecurity Threats", "New E-commerce Platforms"];
                             } else {
-                                alert("Sorry, there was an error communicating with the AI. Please try again later.");
+                                alert("Sorry, there was an error communicating with the AI. " + error.message);
                             }
                         })
                         .finally(() => {
@@ -318,14 +369,20 @@
                 },
                 
                 async getAIResponse(prompt, systemMessage) {
-                    const OPENROUTER_API_KEY = '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';
+                    if (!this.openRouterApiKey) {
+                        alert('Please enter your OpenRouter API Key in the Settings tab.');
+                        throw new Error('API Key is missing.');
+                    }
+                    
                     const MODEL = 'meta-llama/llama-3-8b-instruct:free';
 
                     const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
                         method: "POST",
                         headers: {
-                            "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
-                            "Content-Type": "application/json"
+                            "Authorization": `Bearer ${this.openRouterApiKey}`,
+                            "Content-Type": "application/json",
+                            "HTTP-Referer": "https://workspace.blacnova.net", // Recommended by OpenRouter
+                            "X-Title": "Blacnova Workspace" // Recommended by OpenRouter
                         },
                         body: JSON.stringify({
                             "model": MODEL,
