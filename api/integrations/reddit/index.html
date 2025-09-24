@@ -134,8 +134,8 @@
                 <!-- Trending on Reddit -->
                 <div class="lg:col-span-1 bg-[var(--card-bg)] p-6 rounded-lg border border-[var(--border-color)]">
                     <h3 class="text-xl font-bold mb-4">Trending</h3>
-                    <div x-show="isLoading" class="flex justify-center items-center h-48"><div class="loader"></div></div>
-                    <div x-show="!isLoading" class="h-64">
+                     <div x-show="dashboardLoading" class="flex justify-center items-center h-64"><div class="loader"></div></div>
+                    <div x-show="!dashboardLoading" class="h-64">
                         <canvas id="trendingChart"></canvas>
                     </div>
                 </div>
@@ -236,10 +236,8 @@
             return {
                 activeTab: 'dashboard',
                 isLoading: false, // For AI actions
-                dashboardLoading: true, // For initial dashboard data
-                openRouterApiKey: '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',
+                dashboardLoading: true,
                 stats: { karma: '...', upvoteRate: '...', followerGrowth: '...' },
-                trendingTopics: {},
                 topPosts: [],
                 composer: { subreddit: '', title: '', content: '' },
                 analyzer: { subreddit: '', result: '' },
@@ -248,13 +246,12 @@
 
                 init() {
                     this.loadDashboardData();
-                    this.aiAction('getTrends');
                 },
 
                 async loadDashboardData() {
                     this.dashboardLoading = true;
                     try {
-                        const response = await fetch('./reddit_api.php');
+                        const response = await fetch('./reddit_api.php?action=dashboard_data');
                         if (!response.ok) {
                             throw new Error(`Your Reddit session may have expired. Please try removing and re-adding the Reddit integration. (Status: ${response.status})`);
                         }
@@ -262,6 +259,7 @@
                         if (data.success) {
                             this.stats = data.stats;
                             this.topPosts = data.topPosts;
+                            this.renderTrendingChart(data.trendingData);
                         } else {
                             throw new Error(data.error || 'Failed to load dashboard data.');
                         }
@@ -273,8 +271,31 @@
                     }
                 },
                 
-                postToReddit() {
-                    alert('Posting to Reddit is not implemented in this demo.');
+                async postToReddit() {
+                    if (!this.composer.subreddit || !this.composer.title || !this.composer.content) {
+                        alert('Please fill out the subreddit, title, and content fields.');
+                        return;
+                    }
+                    
+                    if (confirm('Are you sure you want to post this to Reddit?')) {
+                        try {
+                            const response = await fetch('./reddit_api.php?action=submit_post', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify(this.composer)
+                            });
+                            const result = await response.json();
+                            if (result.success) {
+                                alert('Successfully posted to Reddit!');
+                                this.composer = { subreddit: '', title: '', content: '' };
+                            } else {
+                                throw new Error(result.error || 'Failed to post.');
+                            }
+                        } catch (error) {
+                            console.error("Post Error:", error);
+                            alert(`Failed to post to Reddit. Error: ${error.message}`);
+                        }
+                    }
                 },
 
                 aiAction(type, input = '') {
@@ -285,10 +306,6 @@
                     let systemMessage = "You are an expert Reddit marketing and content assistant integrated into a business workspace tool. Be insightful, concise, and format your responses in simple HTML for readability (e.g., using <ul>, <li>, <strong>).";
                     
                     switch(type) {
-                        case 'getTrends':
-                            prompt = `Analyze current Reddit trends relevant to business, marketing, or technology. Return a JSON object with the top 5 topics as keys and a numerical "trend score" (1-100) as values. Example: {"AI Developments": 95, "Remote Work Policies": 88}`;
-                            systemMessage = "Provide only a valid JSON object in your response.";
-                            break;
                         case 'improve':
                             if (!input) { this.isLoading = false; return; }
                             prompt = `Please review and improve the following Reddit post content. Enhance its clarity, engagement, and tone for its intended subreddit. Provide only the improved text as a response, without any extra commentary.\n\nContent:\n${input}`;
@@ -306,15 +323,6 @@
                     this.getAIResponse(prompt, systemMessage)
                         .then(response => {
                             switch(type) {
-                                case 'getTrends':
-                                    try {
-                                        const trendsData = JSON.parse(response);
-                                        this.renderTrendingChart(trendsData);
-                                    } catch (e) {
-                                        console.error("Failed to parse or render trending topics:", e);
-                                        this.renderTrendingChart({"AI in Automation":85, "Remote Work":75, "Sustainable Tech":80, "Cybersecurity":90, "E-commerce":70});
-                                    }
-                                    break;
                                 case 'improve':
                                     this.composer.content = response;
                                     break;
@@ -328,11 +336,7 @@
                         })
                         .catch(error => {
                             console.error("AI Error:", error);
-                            if (type === 'getTrends') {
-                                this.renderTrendingChart({"AI in Automation":85, "Remote Work":75, "Sustainable Tech":80, "Cybersecurity":90, "E-commerce":70});
-                            } else {
-                                alert("Sorry, there was an error communicating with the AI. " + error.message);
-                            }
+                            alert("Sorry, there was an error communicating with the AI. " + error.message);
                         })
                         .finally(() => {
                             this.isLoading = false;
@@ -343,14 +347,15 @@
                     if (this.trendingChart) {
                         this.trendingChart.destroy();
                     }
+                    const truncatedLabels = data.labels.map(label => label.length > 25 ? label.substring(0, 22) + '...' : label);
                     const ctx = document.getElementById('trendingChart').getContext('2d');
                     this.trendingChart = new Chart(ctx, {
                         type: 'bar',
                         data: {
-                            labels: Object.keys(data),
+                            labels: truncatedLabels,
                             datasets: [{
-                                label: 'Trend Score',
-                                data: Object.values(data),
+                                label: 'Upvotes (Past 24h)',
+                                data: data.scores,
                                 backgroundColor: 'rgba(212, 97, 28, 0.5)',
                                 borderColor: 'rgba(212, 97, 28, 1)',
                                 borderWidth: 1
@@ -367,7 +372,13 @@
                                     titleColor: '#EEEEEE',
                                     bodyColor: '#EEEEEE',
                                     borderColor: 'rgba(212, 97, 28, 1)',
-                                    borderWidth: 1
+                                    borderWidth: 1,
+                                    callbacks: {
+                                        // Show full label in tooltip
+                                        title: (tooltipItems) => {
+                                            return data.labels[tooltipItems[0].dataIndex];
+                                        }
+                                    }
                                 }
                             },
                             scales: {
@@ -386,12 +397,13 @@
                 },
 
                 async getAIResponse(prompt, systemMessage) {
+                    const OPENROUTER_API_KEY = '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';
                     const MODEL = 'meta-llama/llama-3-8b-instruct:free';
 
                     const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
                         method: "POST",
                         headers: {
-                            "Authorization": `Bearer ${this.openRouterApiKey}`,
+                            "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
                             "Content-Type": "application/json",
                             "HTTP-Referer": "https://workspace.blacnova.net", // Recommended by OpenRouter
                             "X-Title": "Blacnova Workspace" // Recommended by OpenRouter
