@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dropbox Tool - Blacnova Workspace</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #101010; color: #EEEEEE; }
+    </style>
+</head>
+<body class="bg-gray-900 text-white" x-data="dropboxTool()" x-init="init()">
+
+    <div class="container mx-auto p-8">
+        <header class="text-center mb-12">
+            <i class="fab fa-dropbox text-6xl text-blue-500 mb-4"></i>
+            <h1 class="text-4xl md:text-5xl font-bold mb-2">Dropbox File Explorer</h1>
+            <p class="text-lg text-gray-400" x-text="accountInfo.name ? `Welcome, ${accountInfo.name}` : 'Your files at a glance.'"></p>
+        </header>
+
+        <main class="main-content-card max-w-5xl mx-auto bg-gray-800/50 border border-gray-700/50 rounded-2xl p-8">
+            <!-- Breadcrumbs -->
+            <div class="mb-4 text-gray-400">
+                <template x-for="(crumb, index) in breadcrumbs" :key="index">
+                    <span>
+                        <a href="#" @click.prevent="navigateToPath(crumb.path)" class="hover:text-white" x-text="crumb.name"></a>
+                        <span x-show="index < breadcrumbs.length - 1" class="mx-2">/</span>
+                    </span>
+                </template>
+            </div>
+
+            <!-- File List -->
+            <div x-show="!isLoading" class="divide-y divide-gray-700">
+                <template x-for="item in files" :key="item.id">
+                    <div @click="handleItemClick(item)" class="flex items-center p-3 -mx-3 rounded-lg hover:bg-white/5 transition-colors" :class="item['.tag'] === 'folder' ? 'cursor-pointer' : ''">
+                        <div class="w-8 text-center mr-4">
+                            <i :class="item['.tag'] === 'folder' ? 'fas fa-folder text-blue-400' : 'fas fa-file-alt text-gray-400'"></i>
+                        </div>
+                        <div class="flex-1">
+                            <p class="font-medium" x-text="item.name"></p>
+                        </div>
+                        <div class="text-sm text-gray-400">
+                            <span x-text="formatDate(item.client_modified)"></span>
+                        </div>
+                    </div>
+                </template>
+                 <p x-show="files.length === 0" class="text-center py-12 text-gray-500">This folder is empty.</p>
+            </div>
+            <div x-show="isLoading" class="flex justify-center items-center h-64">
+                <i class="fas fa-spinner fa-spin text-4xl text-blue-500"></i>
+            </div>
+        </main>
+         <div class="text-center mt-8">
+             <a href="../.." class="text-sm text-gray-400 hover:text-white transition-colors flex items-center justify-center"><i class="fas fa-arrow-left mr-2"></i> Back to Workspace</a>
+        </div>
+    </div>
+
+    <script>
+        function dropboxTool() {
+            return {
+                accountInfo: {},
+                files: [],
+                breadcrumbs: [{ name: 'Home', path: '' }],
+                currentPath: '',
+                isLoading: true,
+                async init() {
+                    await this.loadAccountInfo();
+                    this.loadFiles('');
+                },
+                async loadAccountInfo() {
+                    try {
+                        const response = await fetch('./dropbox_api.php?action=get_account_info');
+                        const result = await response.json();
+                        if (result.success) {
+                            this.accountInfo = result.data;
+                        } else throw new Error(result.error);
+                    } catch (error) {
+                        console.error('Error loading account info:', error);
+                    }
+                },
+                async loadFiles(path) {
+                    this.isLoading = true;
+                    this.currentPath = path;
+                    try {
+                        const response = await fetch(`./dropbox_api.php?action=list_files&path=${encodeURIComponent(path)}`);
+                        const result = await response.json();
+                        if (result.success) {
+                            // Sort folders first, then files, all alphabetically
+                            this.files = result.data.entries.sort((a, b) => {
+                                if (a['.tag'] === 'folder' && b['.tag'] !== 'folder') return -1;
+                                if (a['.tag'] !== 'folder' && b['.tag'] === 'folder') return 1;
+                                return a.name.localeCompare(b.name);
+                            });
+                            this.updateBreadcrumbs(path);
+                        } else {
+                            throw new Error(result.error || 'Failed to list files');
+                        }
+                    } catch (error) {
+                        console.error('Error loading files:', error);
+                        alert(`Error: ${error.message}`);
+                    } finally {
+                        this.isLoading = false;
+                    }
+                },
+                handleItemClick(item) {
+                    if (item['.tag'] === 'folder') {
+                        this.loadFiles(item.path_lower);
+                    }
+                },
+                navigateToPath(path) {
+                    this.loadFiles(path);
+                },
+                updateBreadcrumbs(path) {
+                    if (path === '') {
+                        this.breadcrumbs = [{ name: 'Home', path: '' }];
+                        return;
+                    }
+                    const parts = path.split('/').filter(p => p);
+                    let currentPath = '';
+                    this.breadcrumbs = [{ name: 'Home', path: '' }];
+                    parts.forEach(part => {
+                        currentPath += `/${part}`;
+                        this.breadcrumbs.push({ name: part, path: currentPath });
+                    });
+                },
+                formatDate(dateString) {
+                    if (!dateString) return '';
+                    return new Date(dateString).toLocaleDateString('en-US', {
+                        year: 'numeric', month: 'short', day: 'numeric'
+                    });
+                }
+            }
+        }
+    </script>
+
+</body>
+</html>

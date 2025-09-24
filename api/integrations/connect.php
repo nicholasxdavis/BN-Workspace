@@ -17,36 +17,31 @@ $state = bin2hex(random_bytes(16));
 $_SESSION['oauth_state'] = $state;
 
 if ($provider === 'reddit') {
-    $_SESSION['oauth_provider'] = 'reddit'; // Keep track of the provider
-
-    // Build the Reddit Authorization URL
-    $params = [
-        'client_id' => REDDIT_CLIENT_ID,
-        'response_type' => 'code',
-        'state' => $state,
-        'redirect_uri' => REDDIT_REDIRECT_URI,
-        'duration' => 'permanent',
-        'scope' => 'identity edit flair history modconfig modflair modlog modposts modwiki mysubreddits privatemessages read report save submit subscribe vote wikiedit wikiread'
-    ];
-    $auth_url = 'https://www.reddit.com/api/v1/authorize?' . http_build_query($params);
-    header('Location: ' . $auth_url);
-    exit;
-
+    // ... existing reddit code ...
 } elseif ($provider === 'notion') {
-    $_SESSION['oauth_provider'] = 'notion'; // Keep track of the provider
+    // ... existing notion code ...
+} elseif ($provider === 'dropbox') {
+    $_SESSION['oauth_provider'] = 'dropbox';
 
-    // Build the Notion Authorization URL
+    // PKCE Flow: Generate code verifier and challenge
+    $code_verifier = rtrim(strtr(base64_encode(random_bytes(32)), '+/', '-_'), '=');
+    $_SESSION['dropbox_code_verifier'] = $code_verifier;
+    $code_challenge = rtrim(strtr(base64_encode(hash('sha256', $code_verifier, true)), '+/', '-_'), '=');
+
     $params = [
-        'client_id' => NOTION_CLIENT_ID,
+        'client_id' => DROPBOX_APP_KEY,
         'response_type' => 'code',
-        'owner' => 'user',
-        'redirect_uri' => NOTION_REDIRECT_URI,
+        'redirect_uri' => DROPBOX_REDIRECT_URI,
         'state' => $state,
+        'token_access_type' => 'offline', // To get a refresh token
+        'code_challenge_method' => 'S256',
+        'code_challenge' => $code_challenge,
     ];
-    $auth_url = 'https://api.notion.com/v1/oauth/authorize?' . http_build_query($params);
+    $auth_url = 'https://www.dropbox.com/oauth2/authorize?' . http_build_query($params);
     header('Location: ' . $auth_url);
     exit;
 }
+
 
 // Handle other providers here in the future...
 echo 'Invalid provider specified.';

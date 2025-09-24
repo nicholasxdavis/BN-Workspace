@@ -23,4 +23,9 @@ define('NOTION_CLIENT_ID', getenv('NOTION_ID'));
 define('NOTION_CLIENT_SECRET', getenv('NOTION_KEY'));
 define('NOTION_REDIRECT_URI', ROOT_URL . 'api/integrations/callback.php');
 
+// --- Dropbox API Credentials ---
+define('DROPBOX_APP_KEY', getenv('DROPBOX_APP_KEY'));
+define('DROPBOX_SECRET', getenv('DROPBOX_SECRET'));
+define('DROPBOX_REDIRECT_URI', ROOT_URL . 'api/integrations/callback.php');
+
 ?>
