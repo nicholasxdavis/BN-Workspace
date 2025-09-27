@@ -708,18 +708,22 @@
         </div>
     </div>
 
-    <div x-show="toastVisible"
-         x-transition:enter="transition ease-out duration-300"
-         x-transition:enter-start="opacity-0 transform translate-y-2"
-         x-transition:enter-end="opacity-100 transform translate-y-0"
-         x-transition:leave="transition ease-in duration-200"
-         x-transition:leave-start="opacity-100 transform translate-y-0"
-         x-transition:leave-end="opacity-0 transform translate-y-2"
-         style="display: none;"
-         class="fixed bottom-5 right-5 md:bottom-10 md:right-10 z-[100] px-6 py-3 rounded-xl shadow-lg font-medium text-white"
-         :class="{ 'bg-[#df722d]': toastType === 'success', 'bg-[#df722d]': toastType === 'error', 'bg-[#df722d]': toastType === 'info' }">
-        <p x-text="toastMessage"></p>
-    </div>
+<div x-show="toastVisible"
+     x-transition:enter="transition ease-out duration-300"
+     x-transition:enter-start="opacity-0 transform translate-y-2"
+     x-transition:enter-end="opacity-100 transform translate-y-0"
+     x-transition:leave="transition ease-in duration-200"
+     x-transition:leave-start="opacity-100 transform translate-y-0"
+     x-transition:leave-end="opacity-0 transform translate-y-2"
+     style="display: none;"
+     class="fixed bottom-5 right-5 md:bottom-10 md:right-10 z-[100] px-6 py-3 rounded-xl shadow-lg font-medium text-white"
+     :class="{
+        'bg-[#df722d]': toastType === 'success' || toastType === 'info',
+        'bg-red-600': toastType === 'error'
+     }">
+  <p x-text="toastMessage"></p>
+</div>
+
 
     <script>
         document.addEventListener('DOMContentLoaded', function () {
