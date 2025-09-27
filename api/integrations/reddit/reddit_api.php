@@ -4,6 +4,7 @@ session_start();
 require_once '../../auth/db_connect.php';
 require_once '../../integrations/config.php';
 require_once '../../integrations/encryption.php';
+require_once '../../integrations/token_manager.php'; // Added token manager
 
 header('Content-Type: application/json');
 
@@ -46,16 +47,8 @@ function makeRedditApiRequest($endpoint, $access_token, $method = 'GET', $post_f
 $action = $_GET['action'] ?? '';
 
 try {
-    // --- Fetch the user's encrypted access token from the database ---
-    $stmt = $pdo->prepare("SELECT access_token FROM user_integrations WHERE user_id = ? AND provider = 'reddit'");
-    $stmt->execute([$_SESSION['user_id']]);
-    $integration = $stmt->fetch();
-
-    if (!$integration) {
-        throw new Exception("Reddit integration not found for this user.", 404);
-    }
-
-    $access_token = decrypt_token($integration['access_token']);
+    // --- Get a valid access token using the token manager ---
+    $access_token = get_valid_access_token($pdo, $_SESSION['user_id'], 'reddit');
 
     // --- Action: Fetch all data for the main dashboard ---
     if ($action === 'dashboard_data') {
