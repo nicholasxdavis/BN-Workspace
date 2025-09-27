@@ -429,7 +429,7 @@
                                         <i class="fas fa-share-square" style="color: var(--primary)"></i>
                                     </span>
                                     <div>
-                                        <h3 class="text-xl font-bold text-white leading-tight">All-At-Once Poster</h3>
+                                        <h3 class="text-xl font-bold text-white leading-tight">Social</h3>
                                         <p class="text-sm text-[var(--primary)] font-medium">Active</p>
                                     </div>
                                 </div>
@@ -445,7 +445,7 @@
                                         <i class="fas fa-chart-line" style="color: var(--primary)"></i>
                                     </span>
                                     <div>
-                                        <h3 class="text-xl font-bold text-white">Real-Time Trends</h3>
+                                        <h3 class="text-xl font-bold text-white">Trends</h3>
                                         <p class="text-sm text-[var(--primary)] font-medium">Active</p>
                                     </div>
                                 </div>
@@ -461,7 +461,7 @@
                                         <i class="fas fa-file-invoice-dollar" style="color: var(--primary)"></i>
                                     </span>
                                     <div>
-                                        <h3 class="text-xl font-bold text-white">Invoice Generation</h3>
+                                        <h3 class="text-xl font-bold text-white">Invoicer</h3>
                                         <p class="text-sm text-[var(--primary)] font-medium">Active</p>
                                     </div>
                                 </div>
@@ -477,7 +477,7 @@
                                         <i class="fas fa-chart-pie" style="color: var(--primary)"></i>
                                     </span>
                                     <div>
-                                        <h3 class="text-xl font-bold text-white">Analytics Overview</h3>
+                                        <h3 class="text-xl font-bold text-white">Analytics</h3>
                                         <p class="text-sm text-[var(--primary)] font-medium">Active</p>
                                     </div>
                                 </div>
@@ -493,7 +493,7 @@
                                         <i class="fas fa-clock" style="color: var(--primary)"></i>
                                     </span>
                                     <div>
-                                        <h3 class="text-xl font-bold text-white leading-tight">BN Cronos</h3>
+                                        <h3 class="text-xl font-bold text-white leading-tight">Automations</h3>
                                         <p class="text-sm text-[var(--primary)] font-medium">Active</p>
                                     </div>
                                 </div>
@@ -509,7 +509,7 @@
                                         <i class="fas fa-tasks" style="color: var(--primary)"></i>
                                     </span>
                                     <div>
-                                        <h3 class="text-xl font-bold text-white">BN Tasks</h3>
+                                        <h3 class="text-xl font-bold text-white">Tasks</h3>
                                         <p class="text-sm text-[var(--primary)] font-medium">Active</p>
                                     </div>
                                 </div>
