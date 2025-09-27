@@ -1,4 +1,3 @@
-```php
 <?php
 // api/integrations/connect.php
 session_start();
@@ -18,13 +17,9 @@ $state = bin2hex(random_bytes(16));
 $_SESSION['oauth_state'] = $state;
 
 if ($provider === 'reddit') {
-    $_SESSION['oauth_provider'] = 'reddit';
     // ... existing reddit code ...
-
 } elseif ($provider === 'notion') {
-    $_SESSION['oauth_provider'] = 'notion';
     // ... existing notion code ...
-
 } elseif ($provider === 'dropbox') {
     $_SESSION['oauth_provider'] = 'dropbox';
 
@@ -51,30 +46,16 @@ if ($provider === 'reddit') {
         'token_access_type' => 'offline', // To get a refresh token
         'code_challenge_method' => 'S256',
         'code_challenge' => $code_challenge,
-        'scope' => implode(' ', $scopes),
+        'scope' => implode(' ', $scopes), // Add the scopes to the request
     ];
     $auth_url = 'https://www.dropbox.com/oauth2/authorize?' . http_build_query($params);
     header('Location: ' . $auth_url);
     exit;
-
-} elseif ($provider === 'github') {
-    $_SESSION['oauth_provider'] = 'github';
-
-    // For GitHub Apps, scopes are not passed in the URL.
-    // Permissions are granted during app installation.
-    $params = [
-        'client_id' => GITHUB_CLIENT_ID,
-        'redirect_uri' => GITHUB_REDIRECT_URI,
-        'state' => $state,
-    ];
-
-    $auth_url = 'https://github.com/login/oauth/authorize?' . http_build_query($params);
-    header('Location: ' . $auth_url);
-    exit;
 }
+
 
 // Handle other providers here in the future...
 echo 'Invalid provider specified.';
 exit;
 ?>
-```
+
