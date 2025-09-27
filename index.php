@@ -573,7 +573,7 @@
                             <div class="space-y-6">
                                 <div class="p-6 border rounded-lg bg-gray-50">
                                     <h2 class="text-xl font-semibold text-gray-700">Blacnova Client</h2>
-                                    <p class="text-gray-600 mt-2">As a Blacnova client, you have unlimited free access to the Workspace and all its tools.</p>
+                                    <p class="text-gray-600 mt-2">As a Blacnova client, you have unlimited access to the Workspace and all its tools.</p>
                                 </div>
                             </div>
                         </div>
