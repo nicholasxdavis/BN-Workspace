@@ -4,6 +4,7 @@ session_start();
 require_once '../../auth/db_connect.php';
 require_once '../../integrations/config.php';
 require_once '../../integrations/encryption.php';
+require_once '../../integrations/token_manager.php'; // Added token manager
 
 header('Content-Type: application/json');
 
@@ -53,14 +54,8 @@ function makeDropboxApiRequest($endpoint, $access_token, $body = null, $is_conte
 $action = $_GET['action'] ?? '';
 
 try {
-    $stmt = $pdo->prepare("SELECT access_token FROM user_integrations WHERE user_id = ? AND provider = 'dropbox'");
-    $stmt->execute([$_SESSION['user_id']]);
-    $integration = $stmt->fetch();
-
-    if (!$integration) {
-        throw new Exception("Dropbox integration not found for this user.", 404);
-    }
-    $access_token = decrypt_token($integration['access_token']);
+    // --- Get a valid access token using the token manager ---
+    $access_token = get_valid_access_token($pdo, $_SESSION['user_id'], 'dropbox');
 
     if ($action === 'dashboard_data') {
         $account_info = makeDropboxApiRequest('/users/get_current_account', $access_token);
@@ -168,4 +163,3 @@ try {
     echo json_encode(['success' => false, 'error' => $e->getMessage()]);
 }
 ?>
-
