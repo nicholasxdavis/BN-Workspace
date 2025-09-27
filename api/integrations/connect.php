@@ -10,25 +10,53 @@ if (!isset($_SESSION['user_id'])) {
     exit;
 }
 
-// 2. Get the provider from the URL
+// 2. Get the provider from the URL and generate state for security
 $provider = $_GET['provider'] ?? '';
-// Generate a random 'state' string for CSRF protection
 $state = bin2hex(random_bytes(16));
 $_SESSION['oauth_state'] = $state;
 
 if ($provider === 'reddit') {
-    // ... existing reddit code ...
+    $_SESSION['oauth_provider'] = 'reddit';
+
+    // Build the Reddit Authorization URL with necessary permissions
+    $params = [
+        'client_id' => REDDIT_CLIENT_ID,
+        'response_type' => 'code',
+        'state' => $state,
+        'redirect_uri' => REDDIT_REDIRECT_URI,
+        'duration' => 'permanent', // To get a refresh_token
+        'scope' => 'identity edit flair history modconfig modflair modlog modposts modwiki mysubreddits privatemessages read report save submit subscribe vote wikiedit wikiread'
+    ];
+
+    $auth_url = 'https://www.reddit.com/api/v1/authorize?' . http_build_query($params);
+    header('Location: ' . $auth_url);
+    exit;
+
 } elseif ($provider === 'notion') {
-    // ... existing notion code ...
+    $_SESSION['oauth_provider'] = 'notion';
+
+    // Build the Notion Authorization URL
+    $params = [
+        'client_id' => NOTION_CLIENT_ID,
+        'response_type' => 'code',
+        'owner' => 'user',
+        'redirect_uri' => NOTION_REDIRECT_URI,
+        'state' => $state,
+    ];
+
+    $auth_url = 'https://api.notion.com/v1/oauth/authorize?' . http_build_query($params);
+    header('Location: ' . $auth_url);
+    exit;
+
 } elseif ($provider === 'dropbox') {
     $_SESSION['oauth_provider'] = 'dropbox';
 
-    // PKCE Flow: Generate code verifier and challenge
+    // PKCE Flow: Generate a code verifier and challenge for enhanced security
     $code_verifier = rtrim(strtr(base64_encode(random_bytes(32)), '+/', '-_'), '=');
     $_SESSION['dropbox_code_verifier'] = $code_verifier;
     $code_challenge = rtrim(strtr(base64_encode(hash('sha256', $code_verifier, true)), '+/', '-_'), '=');
     
-    // Define all the scopes your app needs
+    // Define all the permissions (scopes) your app needs for Dropbox
     $scopes = [
         'account_info.read', 'account_info.write',
         'files.metadata.read', 'files.metadata.write',
@@ -38,6 +66,7 @@ if ($provider === 'reddit') {
         'contacts.read', 'contacts.write'
     ];
 
+    // Build the Dropbox Authorization URL
     $params = [
         'client_id' => DROPBOX_APP_KEY,
         'response_type' => 'code',
@@ -48,13 +77,13 @@ if ($provider === 'reddit') {
         'code_challenge' => $code_challenge,
         'scope' => implode(' ', $scopes), // Add the scopes to the request
     ];
+    
     $auth_url = 'https://www.dropbox.com/oauth2/authorize?' . http_build_query($params);
     header('Location: ' . $auth_url);
     exit;
 }
 
-
-// Handle other providers here in the future...
+// Handle any other providers that might be requested
 echo 'Invalid provider specified.';
 exit;
 ?>
