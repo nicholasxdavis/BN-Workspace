@@ -1,201 +1,682 @@
-<?php
-// api/integrations/reddit/reddit_api.php
-session_start();
-require_once '../../auth/db_connect.php';
-require_once '../../integrations/config.php';
-require_once '../../integrations/encryption.php';
-
-header('Content-Type: application/json');
-
-if (!isset($_SESSION['user_id'])) {
-    http_response_code(401);
-    echo json_encode(['success' => false, 'error' => 'User not authenticated']);
-    exit;
-}
-
-// --- Helper function to make authenticated requests to the Reddit API ---
-function makeRedditApiRequest($endpoint, $access_token, $method = 'GET', $post_fields = []) {
-    $api_url = 'https://oauth.reddit.com' . $endpoint;
-    
-    $ch = curl_init();
-    curl_setopt($ch, CURLOPT_URL, $api_url);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
-    curl_setopt($ch, CURLOPT_HTTPHEADER, [
-        'Authorization: bearer ' . $access_token,
-        'User-Agent: BlacnovaWorkspace/1.0'
-    ]);
-
-    if ($method === 'POST') {
-        curl_setopt($ch, CURLOPT_POST, 1);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($post_fields));
-    }
-    
-    $response = curl_exec($ch);
-    $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
-
-    if ($http_code >= 400) {
-        return ['error' => true, 'code' => $http_code, 'message' => json_decode($response, true)];
-    }
-
-    return json_decode($response, true);
-}
-
-
-// --- Main Logic ---
-$action = $_GET['action'] ?? '';
-
-try {
-    // --- Fetch the user's encrypted access token from the database ---
-    $stmt = $pdo->prepare("SELECT access_token FROM user_integrations WHERE user_id = ? AND provider = 'reddit'");
-    $stmt->execute([$_SESSION['user_id']]);
-    $integration = $stmt->fetch();
-
-    if (!$integration) {
-        throw new Exception("Reddit integration not found for this user.", 404);
-    }
-
-    $access_token = decrypt_token($integration['access_token']);
-
-    // --- Action: Fetch all data for the main dashboard ---
-    if ($action === 'dashboard_data') {
-        // 1. Get User Account Info
-        $me_data = makeRedditApiRequest('/api/v1/me', $access_token);
-        if (isset($me_data['error'])) throw new Exception('Failed to fetch user data from Reddit.', $me_data['code']);
-
-        $username = $me_data['name'];
-        $encoded_username = urlencode($username);
-
-        // 2. Get User's Top 5 Posts (last month)
-        $posts_data = makeRedditApiRequest("/user/{$encoded_username}/submitted?sort=top&t=month&limit=5", $access_token);
-        if (isset($posts_data['error'])) throw new Exception('Failed to fetch user posts.', $posts_data['code']);
-        $topPostsTitle = 'Your Top 5 Posts (This Month)';
-
-        // If no posts this month, get all-time top posts as a fallback
-        if (empty($posts_data['data']['children'])) {
-            $posts_data = makeRedditApiRequest("/user/{$encoded_username}/submitted?sort=top&t=all&limit=5", $access_token);
-            if (isset($posts_data['error'])) throw new Exception('Failed to fetch all-time user posts.', $posts_data['code']);
-            $topPostsTitle = 'Your Top 5 Posts (All Time)';
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reddit Tool - Blacnova Workspace</title>
+    <link rel="icon" href="https://www.blacnova.net/img/bn_orange.png" type="image/png">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #d4611c;
+            --primary-light: #e67a35;
+            --dark-bg: #101010;
+            --card-bg: #1a1a1a;
+            --border-color: rgba(255, 255, 255, 0.1);
+            --text-primary: #EEEEEE;
+            --text-secondary: #a1a1aa;
         }
-        
-        $topPosts = [];
-        $total_upvote_ratio = 0;
-        $total_comments = 0;
-        $post_count = 0;
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--dark-bg);
+            color: var(--text-primary);
+            overflow-x: hidden;
+        }
+        #particle-bg {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+            opacity: 0.7;
+        }
+        .sidebar-link {
+            transition: all 0.2s ease-in-out;
+        }
+        .sidebar-link.active, .sidebar-link:hover {
+            background-color: rgba(212, 97, 28, 0.1);
+            color: var(--primary-light);
+        }
+        .sidebar-link.active {
+            box-shadow: inset 3px 0 0 0 var(--primary);
+        }
+        .form-input, .form-textarea {
+            background-color: #2a2a2a;
+            border: 1px solid var(--border-color);
+            border-radius: 0.75rem;
+            transition: all 0.2s ease;
+        }
+        .form-input:focus, .form-textarea:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(212, 97, 28, 0.3);
+        }
+        .btn {
+            padding: 0.75rem 1.5rem;
+            border-radius: 1.875rem; /* 30px */
+            font-weight: 600;
+            transition: all 0.3s ease;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .btn-primary {
+            background-color: var(--primary);
+            color: white;
+        }
+        .btn-primary:hover {
+            background-color: var(--primary-light);
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(212, 97, 28, 0.25);
+        }
+        .btn-secondary {
+            background-color: #3a3a3a;
+            color: white;
+        }
+        .btn-secondary:hover {
+            background-color: #4a4a4a;
+            transform: translateY(-2px);
+        }
+        [x-cloak] { display: none !important; }
 
-        if (isset($posts_data['data']['children']) && is_array($posts_data['data']['children'])) {
-            foreach ($posts_data['data']['children'] as $post) {
-                if (isset($post['data'])) {
-                    $post_count++;
-                    $total_upvote_ratio += $post['data']['upvote_ratio'] ?? 0;
-                    $total_comments += $post['data']['num_comments'] ?? 0;
+        .loader {
+            border: 4px solid rgba(255, 255, 255, 0.2);
+            border-left-color: var(--primary);
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        .typing-cursor {
+            display: inline-block;
+            width: 8px;
+            height: 1.2rem;
+            background-color: var(--primary);
+            animation: blink 0.7s infinite;
+            vertical-align: middle;
+        }
+        @keyframes blink { 50% { opacity: 0; } }
+        
+        .main-content-card {
+            background: linear-gradient(135deg, rgba(26,26,26,0.5) 0%, rgba(10,10,10,0.6) 100%);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 1.5rem;
+            padding: 2.5rem;
+            backdrop-filter: blur(10px);
+        }
+
+        .stat-card {
+            background-color: #161618;
+            border-radius: 1rem;
+            padding: 1.5rem;
+            border: 1px solid var(--border-color);
+            transition: all 0.3s ease;
+        }
+        .stat-card:hover {
+            transform: translateY(-4px);
+            border-color: var(--primary);
+        }
+        @media (max-width: 768px) {
+            .sidebar {
+                transform: translateX(-100%);
+                transition: transform 0.3s ease-in-out;
+            }
+            .sidebar.open {
+                transform: translateX(0);
+            }
+        }
+    </style>
+</head>
+<body class="h-screen flex" x-data="redditTool()" x-init="init()">
+    <canvas id="particle-bg"></canvas>
+    
+    <header class="md:hidden fixed top-0 left-0 w-full bg-[var(--card-bg)]/80 backdrop-blur-lg border-b border-[var(--border-color)] z-20 flex items-center justify-between p-4">
+        <h1 class="text-lg font-bold flex items-center">
+            <i class="fab fa-reddit-alien text-2xl mr-2 text-[#FF4500]"></i>Reddit Tool
+        </h1>
+        <button @click="sidebarOpen = !sidebarOpen" class="text-2xl">
+            <i class="fas fa-bars"></i>
+        </button>
+    </header>
+
+    <aside :class="{'open': sidebarOpen}" class="sidebar w-64 bg-[var(--card-bg)]/80 backdrop-blur-lg border-r border-[var(--border-color)] flex flex-col flex-shrink-0 z-10 fixed md:relative h-full">
+        <div class="p-6 border-b border-[var(--border-color)] hidden md:block">
+             <h1 class="text-xl font-bold flex items-center">
+                 <i class="fab fa-reddit-alien text-2xl mr-3 text-[#FF4500]"></i>Reddit Tool
+             </h1>
+             <p class="text-xs text-gray-400 mt-1">Blacnova Workspace</p>
+        </div>
+        <nav class="flex-1 p-4 space-y-2 mt-16 md:mt-0">
+            <a href="#" @click.prevent="switchTab('dashboard')" class="sidebar-link flex items-center px-4 py-2 rounded-lg" :class="{ 'active': activeTab === 'dashboard' }">
+                <i class="fas fa-home w-6"></i>
+                <span>Dashboard</span>
+            </a>
+            <a href="#" @click.prevent="switchTab('composer')" class="sidebar-link flex items-center px-4 py-2 rounded-lg" :class="{ 'active': activeTab === 'composer' }">
+                <i class="fas fa-pen-to-square w-6"></i>
+                <span>Post Composer</span>
+            </a>
+            <a href="#" @click.prevent="switchTab('analyzer')" class="sidebar-link flex items-center px-4 py-2 rounded-lg" :class="{ 'active': activeTab === 'analyzer' }">
+                <i class="fas fa-chart-line w-6"></i>
+                <span>Subreddit Analyzer</span>
+            </a>
+            <a href="#" @click.prevent="switchTab('summarizer')" class="sidebar-link flex items-center px-4 py-2 rounded-lg" :class="{ 'active': activeTab === 'summarizer' }">
+                <i class="fas fa-file-lines w-6"></i>
+                <span>Content Summarizer</span>
+            </a>
+        </nav>
+        <div class="p-4 border-t border-[var(--border-color)]">
+             <a href="../../.." class="text-sm text-gray-400 hover:text-white transition-colors flex items-center"><i class="fas fa-arrow-left mr-2"></i> Back to Workspace</a>
+        </div>
+    </aside>
+
+    <main class="flex-1 p-4 md:p-8 overflow-y-auto mt-16 md:mt-0">
+        <div x-show="activeTab === 'dashboard'" x-cloak>
+            <div class="text-center mb-12">
+                <div class="flex justify-center mb-4">
+                    <i class="fas fa-tachometer-alt text-3xl text-primary"></i>
+                </div>
+                <h1 class="text-4xl md:text-5xl font-medium mb-4 text-white">Dashboard</h1>
+                <p class="text-lg text-gray-300 max-w-2xl mx-auto">Your Reddit presence at a glance.</p>
+            </div>
+            
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                <div class="stat-card">
+                    <div class="flex items-center text-gray-400 mb-3">
+                        <i class="fas fa-star mr-2"></i>
+                        <h3 class="text-sm font-medium uppercase tracking-wider">Total Karma</h3>
+                    </div>
+                    <p class="text-4xl font-bold text-white" x-text="stats.karma"></p>
+                </div>
+                <div class="stat-card">
+                    <div class="flex items-center text-gray-400 mb-3">
+                        <i class="fas fa-arrow-up-right-dots mr-2"></i>
+                        <h3 class="text-sm font-medium uppercase tracking-wider">Avg. Upvote Rate</h3>
+                    </div>
+                    <p class="text-4xl font-bold text-white" x-text="stats.averageUpvoteRate"></p>
+                </div>
+                <div class="stat-card">
+                    <div class="flex items-center text-gray-400 mb-3">
+                        <i class="fas fa-comments mr-2"></i>
+                        <h3 class="text-sm font-medium uppercase tracking-wider">Avg. Comments</h3>
+                    </div>
+                    <p class="text-4xl font-bold text-white" x-text="stats.averageComments"></p>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                <div class="lg:col-span-1 main-content-card">
+                    <h3 class="text-xl font-bold mb-4">Trending on Reddit</h3>
+                    <div x-show="dashboardLoading" class="flex justify-center items-center h-64"><div class="loader"></div></div>
+                    <div x-show="!dashboardLoading" class="h-64 relative">
+                        <canvas id="trendingChart"></canvas>
+                    </div>
+                </div>
+                <div class="lg:col-span-2 main-content-card">
+                    <h3 class="text-xl font-bold mb-4" x-text="topPostsTitle"></h3>
+                     <div x-show="dashboardLoading" class="flex justify-center items-center h-48"><div class="loader"></div></div>
+                     <div x-show="!dashboardLoading && topPosts.length > 0" class="space-y-4">
+                        <template x-for="post in topPosts" :key="post.id">
+                             <div class="flex justify-between items-center p-4 bg-[#2a2a2a] rounded-xl border border-transparent hover:border-primary/50 transition-colors">
+                                <div>
+                                    <p class="font-semibold" x-text="post.title"></p>
+                                    <p class="text-sm text-gray-400" x-text="post.subreddit"></p>
+                                </div>
+                                <div class="text-right flex-shrink-0 ml-4">
+                                    <p class="font-bold text-[#df722d]" x-text="`${post.upvotes} Upvotes`"></p>
+                                    <p class="text-sm text-gray-400" x-text="`${post.comments} Comments`"></p>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                    <p x-show="!dashboardLoading && topPosts.length === 0" class="text-gray-400 text-center py-10">No posts found for the last month.</p>
+                </div>
+            </div>
+        </div>
+
+        <div x-show="activeTab === 'composer'" x-cloak>
+            <div class="text-center mb-12">
+                <div class="flex justify-center mb-4">
+                    <i class="fas fa-pen-to-square text-3xl text-primary"></i>
+                </div>
+                <h1 class="text-4xl md:text-5xl font-medium mb-4 text-white">AI Post Composer</h1>
+                <p class="text-lg text-gray-300 max-w-2xl mx-auto">Craft the perfect Reddit post with the help of AI.</p>
+            </div>
+            <div class="main-content-card max-w-4xl mx-auto">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                    <div>
+                        <label for="subreddit" class="block text-sm font-medium mb-2">Subreddit (e.g., r/technology)</label>
+                        <input type="text" id="subreddit" x-model="composer.subreddit" class="form-input w-full px-4 py-3" placeholder="r/yoursubreddit">
+                    </div>
+                    <div>
+                        <label for="title" class="block text-sm font-medium mb-2">Post Title</label>
+                        <input type="text" id="title" x-model="composer.title" class="form-input w-full px-4 py-3" placeholder="An interesting title">
+                    </div>
+                </div>
+                <div>
+                    <label for="content" class="block text-sm font-medium mb-2">Content</label>
+                    <textarea id="content" x-model="composer.content" rows="10" class="form-textarea w-full px-4 py-3" placeholder="Write your post here... or let the AI generate it for you."></textarea>
+                </div>
+                <div class="flex flex-col sm:flex-row justify-between items-center mt-6">
+                    <div class="flex items-center space-x-4 mb-4 sm:mb-0">
+                        <button @click="aiAction('improve', composer)" class="btn btn-secondary" :disabled="isLoading || !apiKey">
+                            <i class="fas fa-wand-magic-sparkles mr-2"></i>
+                            <span x-show="!isLoading">AI Improve</span>
+                             <div x-show="isLoading && currentAction === 'improve'" class="loader"></div>
+                        </button>
+                         <button @click="aiAction('generate', composer)" class="btn btn-secondary" :disabled="isLoading || !apiKey">
+                            <i class="fas fa-robot mr-2"></i>
+                            <span x-show="!isLoading">AI Generate</span>
+                             <div x-show="isLoading && currentAction === 'generate'" class="loader"></div>
+                        </button>
+                    </div>
+                    <button @click="postToReddit()" class="btn btn-primary">
+                        <i class="fab fa-reddit-alien mr-2"></i> Post to Reddit
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div x-show="activeTab === 'analyzer'" x-cloak>
+            <div class="text-center mb-12">
+                <div class="flex justify-center mb-4">
+                    <i class="fas fa-chart-line text-3xl text-primary"></i>
+                </div>
+                <h1 class="text-4xl md:text-5xl font-medium mb-4 text-white">Subreddit Analyzer</h1>
+                <p class="text-lg text-gray-300 max-w-2xl mx-auto">Gain strategic insights into any Reddit community.</p>
+            </div>
+            <div class="main-content-card max-w-4xl mx-auto">
+                <label for="analyze-subreddit" class="block text-sm font-medium mb-2">Enter a subreddit to analyze</label>
+                <div class="flex">
+                    <input type="text" id="analyze-subreddit" x-model="analyzer.subreddit" @keydown.enter="aiAction('analyze', analyzer.subreddit)" class="form-input w-full px-4 py-3 !rounded-r-none" placeholder="r/futurology">
+                    <button @click="aiAction('analyze', analyzer.subreddit)" class="btn btn-primary !rounded-l-none" :disabled="isLoading || !apiKey">
+                        <span x-show="!isLoading">Analyze</span>
+                         <div x-show="isLoading && currentAction === 'analyze'" class="loader"></div>
+                    </button>
+                </div>
+                 <div x-show="analyzer.result" class="mt-8 border-t border-[var(--border-color)] pt-8">
+                    <h3 class="text-2xl font-bold mb-4">Analysis for <span class="text-primary" x-text="analyzer.analyzedSubreddit"></span></h3>
+                    <div class="prose prose-invert max-w-none text-gray-300" id="analyzer-results-container"></div>
+                </div>
+            </div>
+        </div>
+
+        <div x-show="activeTab === 'summarizer'" x-cloak>
+            <div class="text-center mb-12">
+                 <div class="flex justify-center mb-4">
+                    <i class="fas fa-file-lines text-3xl text-primary"></i>
+                </div>
+                <h1 class="text-4xl md:text-5xl font-medium mb-4 text-white">Content Summarizer</h1>
+                <p class="text-lg text-gray-300 max-w-2xl mx-auto">Distill long Reddit threads into concise summaries.</p>
+            </div>
+            <div class="main-content-card max-w-4xl mx-auto">
+                <label for="summarize-url" class="block text-sm font-medium mb-2">Enter a Reddit Thread URL</label>
+                <div class="flex">
+                    <input type="text" id="summarize-url" x-model="summarizer.url" @keydown.enter="aiAction('summarize', summarizer.url)" class="form-input w-full px-4 py-3 !rounded-r-none" placeholder="https://www.reddit.com/r/...">
+                    <button @click="aiAction('summarize', summarizer.url)" class="btn btn-primary !rounded-l-none" :disabled="isLoading || !apiKey">
+                         <span x-show="!isLoading">Summarize</span>
+                         <div x-show="isLoading && currentAction === 'summarize'" class="loader"></div>
+                    </button>
+                </div>
+                 <div x-show="summarizer.result" class="mt-8 border-t border-[var(--border-color)] pt-8">
+                    <h3 class="text-2xl font-bold mb-4">Summary</h3>
+                    <div class="prose prose-invert max-w-none text-gray-300" id="summarizer-results-container"></div>
+                </div>
+            </div>
+        </div>
+        
+    </main>
+
+    <script>
+        function redditTool() {
+            return {
+                sidebarOpen: false,
+                activeTab: 'dashboard',
+                isLoading: false,
+                currentAction: '',
+                dashboardLoading: true,
+                apiKey: null,
+                stats: { karma: '...', averageUpvoteRate: '...', averageComments: '...' },
+                topPosts: [],
+                topPostsTitle: 'Your Top Posts (This Month)',
+                composer: { subreddit: '', title: '', content: '' },
+                analyzer: { subreddit: '', result: '', analyzedSubreddit: '' },
+                summarizer: { url: '', result: '' },
+                trendingChart: null,
+
+                async init() {
+                    this.initParticles();
+                    await this.loadApiKey();
+                    this.loadDashboardData();
+                },
+                
+                switchTab(tab) {
+                    this.activeTab = tab;
+                    this.sidebarOpen = false; // Close sidebar on tab change
+                },
+
+                async loadApiKey() {
+                    try {
+                        const response = await fetch(`../../auth/key_handler.php?t=${Date.now()}`);
+                        if (!response.ok) throw new Error(`Could not fetch API key. Status: ${response.status}`);
+                        const data = await response.json();
+                        if (data.success) this.apiKey = data.apiKey;
+                        else throw new Error(data.error || 'Failed to get API key.');
+                    } catch (error) {
+                        console.error("API Key Load Error:", error);
+                        this.apiKey = null;
+                        alert('AI features are disabled. Could not load the required API key.');
+                    }
+                },
+                
+                async loadDashboardData() {
+                    this.dashboardLoading = true;
+                    try {
+                        const response = await fetch(`./reddit_api.php?action=dashboard_data&t=${Date.now()}`);
+                        if (!response.ok) {
+                            const errorText = await response.text();
+                            throw new Error(`Failed to load data. Please re-authenticate Reddit if the issue persists. (Status: ${response.status} - ${errorText})`);
+                        }
+                        const data = await response.json();
+                        if (data.success) {
+                            this.stats = data.stats;
+                            this.topPosts = data.topPosts;
+                            this.topPostsTitle = data.topPostsTitle || 'Your Top Posts (This Month)';
+                            if (data.trendingData && data.trendingData.labels && data.trendingData.labels.length > 0) {
+                                this.renderTrendingChart(data.trendingData);
+                            } else {
+                                this.renderChartError();
+                            }
+                        } else {
+                            throw new Error(data.error || 'Failed to load dashboard data.');
+                        }
+                    } catch (error) {
+                        console.error("Dashboard Load Error:", error);
+                        alert(`Could not load your Reddit data. Error: ${error.message}`);
+                        this.renderChartError();
+                    } finally {
+                        this.dashboardLoading = false;
+                    }
+                },
+                
+                async postToReddit() {
+                    if (!this.composer.subreddit || !this.composer.title || !this.composer.content) {
+                        alert('Please fill out the subreddit, title, and content fields.');
+                        return;
+                    }
+                    if (confirm('Are you sure you want to post this to Reddit?')) {
+                        try {
+                            const response = await fetch('./reddit_api.php?action=submit_post', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify(this.composer)
+                            });
+                            const result = await response.json();
+                            if (result.success) {
+                                alert('Successfully posted to Reddit!');
+                                this.composer = { subreddit: '', title: '', content: '' };
+                            } else {
+                                throw new Error(result.error || 'Failed to post.');
+                            }
+                        } catch (error) {
+                            console.error("Post Error:", error);
+                            alert(`Failed to post to Reddit. Error: ${error.message}`);
+                        }
+                    }
+                },
+
+                async aiAction(type, inputData) {
+                    if (!this.apiKey) {
+                        alert('The AI API Key is not configured. AI features are disabled.');
+                        return;
+                    }
+                    if (this.isLoading) return;
+                    this.isLoading = true;
+                    this.currentAction = type;
+
+                    let prompt = '';
+                    let systemMessage = "You are an expert Reddit marketing and content assistant. Be insightful, concise, and format your responses using markdown (e.g., **bold**, *italic*, - for lists).";
+                    let targetElementId = '';
+
+                    try {
+                        switch(type) {
+                            case 'improve':
+                                if (!inputData.content) throw new Error("Content is required to improve.");
+                                systemMessage = "You are a Reddit content optimization expert. Refine user-provided text for maximum engagement and clarity for a specific subreddit audience.";
+                                prompt = `Refine the following post content for the subreddit "${inputData.subreddit}". Keep the core message but improve tone, structure, and clarity. The post title is "${inputData.title}".\n\nOriginal Content:\n${inputData.content}\n\nReturn ONLY the improved post content.`;
+                                targetElementId = 'content';
+                                break;
+                            case 'generate':
+                                if (!inputData.subreddit || !inputData.title) throw new Error("Subreddit and title are required to generate content.");
+                                systemMessage = "You are a creative Reddit post writer. Generate compelling post content based on a subreddit, title, and contextual info about the community.";
+                                const subredditInfo = await this.getSubredditInfo(inputData.subreddit);
+                                prompt = `Generate a Reddit post for "${inputData.subreddit}". Title: "${inputData.title}".\n\nSubreddit Context:\n${subredditInfo}\n\nWrite an engaging post. Return ONLY the generated content.`;
+                                targetElementId = 'content';
+                                break;
+                            case 'analyze':
+                                if (!inputData) throw new Error("Subreddit name is required for analysis.");
+                                this.analyzer.analyzedSubreddit = inputData;
+                                systemMessage = "You are a Reddit strategist. Provide a detailed, well-structured analysis of a subreddit with actionable insights for a content creator, using markdown for formatting.";
+                                prompt = `Perform a comprehensive analysis of "${inputData}". Structure your response with these markdown sections:\n\n**Overall Summary:**\n\n**Key Topics & Themes:** (as a bulleted list)\n\n**Community Vibe & Tone:**\n\n**Content Opportunities:** (as a bulleted list)`;
+                                targetElementId = 'analyzer-results-container';
+                                this.analyzer.result = ' ';
+                                break;
+                            case 'summarize':
+                                if (!inputData) throw new Error("A Reddit URL is required to summarize.");
+                                systemMessage = "You are an AI specializing in summarizing online discussions. Distill a Reddit thread into key points, arguments, and overall sentiment.";
+                                prompt = `Provide a detailed summary of this Reddit thread: ${inputData}. Cover the original post's main topic, prominent opinions, counter-arguments, and the overall sentiment, using markdown for structure.`;
+                                targetElementId = 'summarizer-results-container';
+                                this.summarizer.result = ' ';
+                                break;
+                            default: throw new Error("Invalid AI action type.");
+                        }
+                        await this.streamAIResponse(prompt, systemMessage, targetElementId, type);
+                    } catch (error) {
+                        console.error("AI Action Error:", error);
+                        alert("An error occurred: " + error.message);
+                    } finally {
+                        this.isLoading = false;
+                        this.currentAction = '';
+                    }
+                },
+
+                async getSubredditInfo(subreddit) {
+                    try {
+                        const response = await fetch(`./reddit_api.php?action=get_subreddit_info&subreddit=${subreddit}`);
+                        if (!response.ok) return "Could not fetch specific subreddit info.";
+                        const data = await response.json();
+                        return data.success ? `Description: ${data.info.description}\nRules: ${data.info.rules.join(', ')}` : "No specific info found.";
+                    } catch (error) {
+                        console.error(error);
+                        return "Could not fetch specific subreddit info.";
+                    }
+                },
+
+                formatAIResponse(text) {
+                    let formattedText = text
+                        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                        .replace(/\*(.*?)\*/g, '<em>$1</em>');
                     
-                    $topPosts[] = [
-                        'id' => $post['data']['id'] ?? 'N/A',
-                        'title' => $post['data']['title'] ?? 'No Title',
-                        'subreddit' => $post['data']['subreddit_name_prefixed'] ?? 'N/A',
-                        'upvotes' => isset($post['data']['score']) ? number_format($post['data']['score']) : '0',
-                        'comments' => isset($post['data']['num_comments']) ? number_format($post['data']['num_comments']) : '0'
-                    ];
+                    formattedText = formattedText.replace(/^\s*[\*-]\s*(.*)$/gm, '<li>$1</li>');
+                    formattedText = formattedText.replace(/<\/li>\n<li>/g, '</li><li>');
+                    if(formattedText.includes('<li>')) {
+                       formattedText = `<ul>${formattedText.match(/<li>.*?<\/li>/g).join('')}</ul>`;
+                    }
+                    
+                    return formattedText.replace(/\n/g, '<br>').replace(/<br><ul>/g, '<ul>').replace(/<\/ul><br>/g, '</ul>');
+                },
+
+                async streamAIResponse(prompt, systemMessage, elementId, actionType) {
+                    let targetElement;
+                    if (actionType === 'improve' || actionType === 'generate') {
+                        // handled by model update
+                    } else {
+                        targetElement = document.getElementById(elementId);
+                        if (!targetElement) throw new Error(`Element with ID ${elementId} not found.`);
+                        targetElement.innerHTML = '';
+                    }
+                    
+                    let fullResponse = '';
+                    const cursor = '<span class="typing-cursor"></span>';
+                    
+                    if(targetElement) targetElement.innerHTML = cursor;
+                    else this.composer.content = '';
+
+                    try {
+                        const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+                            method: "POST",
+                            headers: { "Authorization": `Bearer ${this.apiKey}`, "Content-Type": "application/json" },
+                            body: JSON.stringify({
+                                "model": "deepseek/deepseek-chat",
+                                "messages": [ { "role": "system", "content": systemMessage }, { "role": "user", "content": prompt } ],
+                                "stream": true
+                            })
+                        });
+
+                        if (!response.ok) throw new Error(`API request failed with status ${response.status}`);
+                        
+                        const reader = response.body.getReader();
+                        const decoder = new TextDecoder();
+
+                        while (true) {
+                            const { value, done } = await reader.read();
+                            if (done) break;
+                            
+                            const chunk = decoder.decode(value, { stream: true });
+                            const lines = chunk.split('\n').filter(line => line.startsWith('data: '));
+
+                            for (const line of lines) {
+                                const jsonStr = line.substring(6);
+                                if (jsonStr.trim() === '[DONE]') continue;
+                                const data = JSON.parse(jsonStr);
+                                if (data.choices[0].delta.content) {
+                                    fullResponse += data.choices[0].delta.content;
+                                    if(targetElement) {
+                                        targetElement.innerHTML = this.formatAIResponse(fullResponse) + cursor;
+                                    } else {
+                                        this.composer.content = fullResponse;
+                                    }
+                                }
+                            }
+                        }
+                    } catch (error) {
+                        const errorMessage = `<p class="text-red-400">Error: ${error.message}</p>`;
+                        if(targetElement) targetElement.innerHTML = errorMessage;
+                        else this.composer.content = `AI Error: ${error.message}`;
+                        throw error;
+                    } finally {
+                        if(targetElement) {
+                            targetElement.innerHTML = this.formatAIResponse(fullResponse);
+                            if (actionType === 'analyze') this.analyzer.result = fullResponse;
+                            if (actionType === 'summarize') this.summarizer.result = fullResponse;
+                        }
+                    }
+                },
+                
+                renderChartError() {
+                    const canvas = document.getElementById('trendingChart');
+                    if(!canvas) return;
+                    const ctx = canvas.getContext('2d');
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    ctx.fillStyle = '#a1a1aa';
+                    ctx.textAlign = 'center';
+                    ctx.fillText('Could not load trending data.', canvas.width / 2, canvas.height / 2);
+                },
+
+                renderTrendingChart(data) {
+                    if (this.trendingChart) this.trendingChart.destroy();
+                    const truncatedLabels = data.labels.map(label => label.length > 25 ? label.substring(0, 22) + '...' : label);
+                    const ctx = document.getElementById('trendingChart').getContext('2d');
+                    this.trendingChart = new Chart(ctx, {
+                        type: 'bar',
+                        data: {
+                            labels: truncatedLabels,
+                            datasets: [{
+                                label: 'Upvotes (Past 24h)',
+                                data: data.scores,
+                                backgroundColor: 'rgba(212, 97, 28, 0.5)',
+                                borderColor: 'rgba(212, 97, 28, 1)',
+                                borderWidth: 1,
+                                borderRadius: 5
+                            }]
+                        },
+                        options: {
+                            indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+                            plugins: {
+                                legend: { display: false },
+                                tooltip: {
+                                    backgroundColor: '#1a1a1a', titleColor: '#EEEEEE', bodyColor: '#EEEEEE',
+                                    borderColor: 'rgba(212, 97, 28, 1)', borderWidth: 1,
+                                    callbacks: { title: (items) => data.labels[items[0].dataIndex] }
+                                }
+                            },
+                            scales: {
+                                x: { beginAtZero: true, grid: { color: 'rgba(255, 255, 255, 0.1)' }, ticks: { color: '#a1a1aa' } },
+                                y: { grid: { display: false }, ticks: { color: '#a1a1aa' } }
+                            }
+                        }
+                    });
+                },
+
+                initParticles() {
+                    const canvas = document.getElementById('particle-bg');
+                    if (!canvas) return;
+                    const ctx = canvas.getContext('2d');
+                    let particles = [];
+                    const particleCount = 70;
+
+                    const resizeCanvas = () => {
+                        canvas.width = window.innerWidth;
+                        canvas.height = window.innerHeight;
+                    };
+                    
+                    class Particle {
+                        constructor() {
+                            const colors = [`rgba(255, 255, 255, ${Math.random()*0.2+0.1})`, `rgba(212, 97, 28, ${Math.random()*0.3+0.1})`];
+                            this.color = colors[Math.floor(Math.random() * colors.length)];
+                            this.radius = Math.random() * 2 + 1;
+                            this.x = Math.random() * canvas.width;
+                            this.y = Math.random() * canvas.height;
+                            this.vx = (Math.random() - 0.5) * 0.4;
+                            this.vy = (Math.random() - 0.5) * 0.4;
+                        }
+                        draw() {
+                            ctx.beginPath();
+                            ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                            ctx.fillStyle = this.color;
+                            ctx.fill();
+                        }
+                        update() {
+                            this.x += this.vx;
+                            this.y += this.vy;
+                            if (this.x < 0 || this.x > canvas.width) this.vx *= -1;
+                            if (this.y < 0 || this.y > canvas.height) this.vy *= -1;
+                        }
+                    }
+
+                    for (let i = 0; i < particleCount; i++) particles.push(new Particle());
+                    
+                    const animate = () => {
+                        ctx.clearRect(0, 0, canvas.width, canvas.height);
+                        particles.forEach(p => { p.update(); p.draw(); });
+                        requestAnimationFrame(animate);
+                    };
+
+                    window.addEventListener('resize', resizeCanvas);
+                    resizeCanvas();
+                    animate();
                 }
             }
         }
-
-        // Calculate custom stats
-        $avg_upvote_rate = ($post_count > 0) ? round(($total_upvote_ratio / $post_count) * 100, 1) . '%' : 'N/A';
-        $avg_comments = ($post_count > 0) ? round($total_comments / $post_count, 1) : 'N/A';
-
-        $stats = [
-            'karma' => number_format($me_data['total_karma']),
-            'averageUpvoteRate' => $avg_upvote_rate,
-            'averageComments' => $avg_comments
-        ];
-
-        // 3. Get Custom Trending Data
-        $trending_subreddits = ['funny', 'AskReddit', 'gaming', 'aww', 'Music', 'pics', 'science', 'worldnews', 'todayilearned', 'movies', 'memes', 'news', 'space'];
-        $all_trending_posts = [];
-        foreach ($trending_subreddits as $sub) {
-            $trending_data = makeRedditApiRequest("/r/{$sub}/top?t=day&limit=5", $access_token);
-            if (isset($trending_data['data']['children'])) {
-                $all_trending_posts = array_merge($all_trending_posts, $trending_data['data']['children']);
-            }
-        }
-        
-        usort($all_trending_posts, fn($a, $b) => ($b['data']['score'] ?? 0) <=> ($a['data']['score'] ?? 0));
-        $top_trending = array_slice($all_trending_posts, 0, 7);
-
-        $trendingData = [
-            'labels' => array_map(fn($post) => $post['data']['title'] ?? 'Untitled', $top_trending),
-            'scores' => array_map(fn($post) => $post['data']['score'] ?? 0, $top_trending)
-        ];
-
-        echo json_encode([
-            'success' => true,
-            'stats' => $stats,
-            'topPosts' => $topPosts,
-            'topPostsTitle' => $topPostsTitle,
-            'trendingData' => $trendingData
-        ]);
-    }
-    // --- Action: Get Subreddit Info for AI Context ---
-    elseif ($action === 'get_subreddit_info') {
-        $subreddit = $_GET['subreddit'] ?? '';
-        if (empty($subreddit)) {
-            throw new Exception("Subreddit not specified.", 400);
-        }
-        // Remove 'r/' prefix if present
-        $subreddit = str_replace('r/', '', $subreddit);
-
-        $about_data = makeRedditApiRequest("/r/{$subreddit}/about", $access_token);
-        if (isset($about_data['error'])) throw new Exception("Could not fetch info for r/{$subreddit}.", $about_data['code']);
-        
-        $rules_data = makeRedditApiRequest("/r/{$subreddit}/about/rules", $access_token);
-        // This endpoint can fail without being critical, so we don't throw an exception
-        $rules = [];
-        if (!isset($rules_data['error']) && isset($rules_data['rules'])) {
-            foreach ($rules_data['rules'] as $rule) {
-                $rules[] = $rule['short_name'];
-            }
-        }
-
-        $info = [
-            'description' => $about_data['data']['public_description'] ?? 'No public description available.',
-            'rules' => !empty($rules) ? $rules : ['No specific rules listed via API.'],
-        ];
-
-        echo json_encode(['success' => true, 'info' => $info]);
-    }
-    // --- Action: Submit a new post ---
-    elseif ($action === 'submit_post' && $_SERVER['REQUEST_METHOD'] === 'POST') {
-        $input = json_decode(file_get_contents('php://input'), true);
-        
-        $post_fields = [
-            'sr' => str_replace('r/', '', $input['subreddit']),
-            'title' => $input['title'],
-            'text' => $input['content'],
-            'kind' => 'self',
-            'api_type' => 'json'
-        ];
-
-        $result = makeRedditApiRequest('/api/submit', $access_token, 'POST', $post_fields);
-
-        if (isset($result['error'])) {
-             throw new Exception('Reddit API error: ' . ($result['message']['json']['errors'][0][1] ?? 'Unknown error'), $result['code']);
-        }
-
-        if (isset($result['json']['errors']) && count($result['json']['errors']) > 0) {
-             throw new Exception('Failed to post: ' . $result['json']['errors'][0][1]);
-        }
-        
-        echo json_encode(['success' => true, 'data' => $result]);
-    }
-    else {
-        throw new Exception("Invalid action specified.", 400);
-    }
-
-} catch (Exception $e) {
-    http_response_code($e->getCode() > 0 ? $e->getCode() : 500);
-    echo json_encode(['success' => false, 'error' => $e->getMessage()]);
-}
-
-?>
+    </script>
+</body>
+</html>
