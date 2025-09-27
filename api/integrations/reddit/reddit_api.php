@@ -1,342 +1,201 @@
-<script>
-    function redditTool() {
-        return {
-            sidebarOpen: false,
-            activeTab: 'dashboard',
-            isLoading: false,
-            currentAction: '',
-            dashboardLoading: true,
-            apiKey: null,
-            stats: { karma: '...', averageUpvoteRate: '...', averageComments: '...' },
-            topPosts: [],
-            topPostsTitle: 'Your Top Posts (This Month)',
-            composer: { subreddit: '', title: '', content: '' },
-            analyzer: { subreddit: '', result: '', analyzedSubreddit: '' },
-            summarizer: { url: '', result: '' },
-            trendingChart: null,
+<?php
+// api/integrations/reddit/reddit_api.php
+session_start();
+require_once '../../auth/db_connect.php';
+require_once '../../integrations/config.php';
+require_once '../../integrations/encryption.php';
 
-            async init() {
-                this.initParticles();
-                await this.loadApiKey();
-                this.loadDashboardData();
-            },
-            
-            switchTab(tab) {
-                this.activeTab = tab;
-                this.sidebarOpen = false; // Close sidebar on tab change
-            },
+header('Content-Type: application/json');
 
-            async loadApiKey() {
-                try {
-                    const response = await fetch(`../../auth/key_handler.php?t=${Date.now()}`);
-                    if (!response.ok) throw new Error(`Could not fetch API key. Status: ${response.status}`);
-                    const data = await response.json();
-                    if (data.success) this.apiKey = data.apiKey;
-                    else throw new Error(data.error || 'Failed to get API key.');
-                } catch (error) {
-                    console.error("API Key Load Error:", error);
-                    this.apiKey = null;
-                    alert('AI features are disabled. Could not load the required API key.');
-                }
-            },
-            
-            async loadDashboardData() {
-                this.dashboardLoading = true;
-                try {
-                    const response = await fetch(`./reddit_api.php?action=dashboard_data&t=${Date.now()}`);
-                    if (!response.ok) {
-                        const errorText = await response.text();
-                        throw new Error(`Failed to load data. Please re-authenticate Reddit if the issue persists. (Status: ${response.status} - ${errorText})`);
-                    }
-                    const data = await response.json();
-                    if (data.success) {
-                        this.stats = data.stats;
-                        this.topPosts = data.topPosts;
-                        this.topPostsTitle = data.topPostsTitle || 'Your Top Posts (This Month)';
-                        if (data.trendingData && data.trendingData.labels && data.trendingData.labels.length > 0) {
-                            this.renderTrendingChart(data.trendingData);
-                        } else {
-                            this.renderChartError();
-                        }
-                    } else {
-                        throw new Error(data.error || 'Failed to load dashboard data.');
-                    }
-                } catch (error) {
-                    console.error("Dashboard Load Error:", error);
-                    alert(`Could not load your Reddit data. Error: ${error.message}`);
-                    this.renderChartError();
-                } finally {
-                    this.dashboardLoading = false;
-                }
-            },
-            
-            async postToReddit() {
-                if (!this.composer.subreddit || !this.composer.title || !this.composer.content) {
-                    alert('Please fill out the subreddit, title, and content fields.');
-                    return;
-                }
-                if (confirm('Are you sure you want to post this to Reddit?')) {
-                    try {
-                        const response = await fetch('./reddit_api.php?action=submit_post', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify(this.composer)
-                        });
-                        const result = await response.json();
-                        if (result.success) {
-                            alert('Successfully posted to Reddit!');
-                            this.composer = { subreddit: '', title: '', content: '' };
-                        } else {
-                            throw new Error(result.error || 'Failed to post.');
-                        }
-                    } catch (error) {
-                        console.error("Post Error:", error);
-                        alert(`Failed to post to Reddit. Error: ${error.message}`);
-                    }
-                }
-            },
+if (!isset($_SESSION['user_id'])) {
+    http_response_code(401);
+    echo json_encode(['success' => false, 'error' => 'User not authenticated']);
+    exit;
+}
 
-            async aiAction(type, inputData) {
-                if (!this.apiKey) {
-                    alert('The AI API Key is not configured. AI features are disabled.');
-                    return;
-                }
-                if (this.isLoading) return;
-                this.isLoading = true;
-                this.currentAction = type;
+// --- Helper function to make authenticated requests to the Reddit API ---
+function makeRedditApiRequest($endpoint, $access_token, $method = 'GET', $post_fields = []) {
+    $api_url = 'https://oauth.reddit.com' . $endpoint;
+    
+    $ch = curl_init();
+    curl_setopt($ch, CURLOPT_URL, $api_url);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, [
+        'Authorization: bearer ' . $access_token,
+        'User-Agent: BlacnovaWorkspace/1.0'
+    ]);
 
-                let prompt = '';
-                let systemMessage = "You are an expert Reddit marketing and content assistant. Be insightful, concise, and format your responses using markdown (e.g., **bold**, *italic*, - for lists).";
-                let targetElementId = '';
+    if ($method === 'POST') {
+        curl_setopt($ch, CURLOPT_POST, 1);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($post_fields));
+    }
+    
+    $response = curl_exec($ch);
+    $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
 
-                try {
-                    switch(type) {
-                        case 'improve':
-                            if (!inputData.content) throw new Error("Content is required to improve.");
-                            systemMessage = "You are a Reddit content optimization expert. Refine user-provided text for maximum engagement and clarity for a specific subreddit audience.";
-                            prompt = `Refine the following post content for the subreddit "${inputData.subreddit}". Keep the core message but improve tone, structure, and clarity. The post title is "${inputData.title}".\n\nOriginal Content:\n${inputData.content}\n\nReturn ONLY the improved post content.`;
-                            targetElementId = 'content';
-                            break;
-                        case 'generate':
-                            if (!inputData.subreddit || !inputData.title) throw new Error("Subreddit and title are required to generate content.");
-                            systemMessage = "You are a creative Reddit post writer. Generate compelling post content based on a subreddit, title, and contextual info about the community.";
-                            const subredditInfo = await this.getSubredditInfo(inputData.subreddit);
-                            prompt = `Generate a Reddit post for "${inputData.subreddit}". Title: "${inputData.title}".\n\nSubreddit Context:\n${subredditInfo}\n\nWrite an engaging post. Return ONLY the generated content.`;
-                            targetElementId = 'content';
-                            break;
-                        case 'analyze':
-                            if (!inputData) throw new Error("Subreddit name is required for analysis.");
-                            this.analyzer.analyzedSubreddit = inputData;
-                            systemMessage = "You are a Reddit strategist. Provide a detailed, well-structured analysis of a subreddit with actionable insights for a content creator, using markdown for formatting.";
-                            prompt = `Perform a comprehensive analysis of "${inputData}". Structure your response with these markdown sections:\n\n**Overall Summary:**\n\n**Key Topics & Themes:** (as a bulleted list)\n\n**Community Vibe & Tone:**\n\n**Content Opportunities:** (as a bulleted list)`;
-                            targetElementId = 'analyzer-results-container';
-                            this.analyzer.result = ' ';
-                            break;
-                        case 'summarize':
-                            if (!inputData) throw new Error("A Reddit URL is required to summarize.");
-                            systemMessage = "You are an AI specializing in summarizing online discussions. Distill a Reddit thread into key points, arguments, and overall sentiment.";
-                            prompt = `Provide a detailed summary of this Reddit thread: ${inputData}. Cover the original post's main topic, prominent opinions, counter-arguments, and the overall sentiment, using markdown for structure.`;
-                            targetElementId = 'summarizer-results-container';
-                            this.summarizer.result = ' ';
-                            break;
-                        default: throw new Error("Invalid AI action type.");
-                    }
-                    await this.streamAIResponse(prompt, systemMessage, targetElementId, type);
-                } catch (error) {
-                    console.error("AI Action Error:", error);
-                    alert("An error occurred: " + error.message);
-                } finally {
-                    this.isLoading = false;
-                    this.currentAction = '';
-                }
-            },
+    if ($http_code >= 400) {
+        return ['error' => true, 'code' => $http_code, 'message' => json_decode($response, true)];
+    }
 
-            async getSubredditInfo(subreddit) {
-                try {
-                    const response = await fetch(`./reddit_api.php?action=get_subreddit_info&subreddit=${subreddit}`);
-                    if (!response.ok) return "Could not fetch specific subreddit info.";
-                    const data = await response.json();
-                    return data.success ? `Description: ${data.info.description}\nRules: ${data.info.rules.join(', ')}` : "No specific info found.";
-                } catch (error) {
-                    console.error(error);
-                    return "Could not fetch specific subreddit info.";
-                }
-            },
+    return json_decode($response, true);
+}
 
-            formatAIResponse(text) {
-                let formattedText = text
-                    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-                    .replace(/\*(.*?)\*/g, '<em>$1</em>');
-                
-                formattedText = formattedText.replace(/^\s*[\*-]\s*(.*)$/gm, '<li>$1</li>');
-                formattedText = formattedText.replace(/<\/li>\n<li>/g, '</li><li>');
-                if(formattedText.includes('<li>')) {
-                   formattedText = `<ul>${formattedText.match(/<li>.*?<\/li>/g).join('')}</ul>`;
-                }
-                
-                return formattedText.replace(/\n/g, '<br>').replace(/<br><ul>/g, '<ul>').replace(/<\/ul><br>/g, '</ul>');
-            },
 
-            async streamAIResponse(prompt, systemMessage, elementId, actionType) {
-                let targetElement;
-                if (actionType === 'improve' || actionType === 'generate') {
-                    // handled by model update
-                } else {
-                    targetElement = document.getElementById(elementId);
-                    if (!targetElement) throw new Error(`Element with ID ${elementId} not found.`);
-                    targetElement.innerHTML = '';
-                }
-                
-                let fullResponse = '';
-                const cursor = '<span class="typing-cursor"></span>';
-                
-                if(targetElement) targetElement.innerHTML = cursor;
-                else this.composer.content = '';
+// --- Main Logic ---
+$action = $_GET['action'] ?? '';
 
-                try {
-                    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-                        method: "POST",
-                        headers: { "Authorization": `Bearer ${this.apiKey}`, "Content-Type": "application/json" },
-                        body: JSON.stringify({
-                            "model": "deepseek/deepseek-chat",
-                            "messages": [ { "role": "system", "content": systemMessage }, { "role": "user", "content": prompt } ],
-                            "stream": true
-                        })
-                    });
+try {
+    // --- Fetch the user's encrypted access token from the database ---
+    $stmt = $pdo->prepare("SELECT access_token FROM user_integrations WHERE user_id = ? AND provider = 'reddit'");
+    $stmt->execute([$_SESSION['user_id']]);
+    $integration = $stmt->fetch();
 
-                    if (!response.ok) throw new Error(`API request failed with status ${response.status}`);
+    if (!$integration) {
+        throw new Exception("Reddit integration not found for this user.", 404);
+    }
+
+    $access_token = decrypt_token($integration['access_token']);
+
+    // --- Action: Fetch all data for the main dashboard ---
+    if ($action === 'dashboard_data') {
+        // 1. Get User Account Info
+        $me_data = makeRedditApiRequest('/api/v1/me', $access_token);
+        if (isset($me_data['error'])) throw new Exception('Failed to fetch user data from Reddit.', $me_data['code']);
+
+        $username = $me_data['name'];
+        $encoded_username = urlencode($username);
+
+        // 2. Get User's Top 5 Posts (last month)
+        $posts_data = makeRedditApiRequest("/user/{$encoded_username}/submitted?sort=top&t=month&limit=5", $access_token);
+        if (isset($posts_data['error'])) throw new Exception('Failed to fetch user posts.', $posts_data['code']);
+        $topPostsTitle = 'Your Top 5 Posts (This Month)';
+
+        // If no posts this month, get all-time top posts as a fallback
+        if (empty($posts_data['data']['children'])) {
+            $posts_data = makeRedditApiRequest("/user/{$encoded_username}/submitted?sort=top&t=all&limit=5", $access_token);
+            if (isset($posts_data['error'])) throw new Exception('Failed to fetch all-time user posts.', $posts_data['code']);
+            $topPostsTitle = 'Your Top 5 Posts (All Time)';
+        }
+        
+        $topPosts = [];
+        $total_upvote_ratio = 0;
+        $total_comments = 0;
+        $post_count = 0;
+
+        if (isset($posts_data['data']['children']) && is_array($posts_data['data']['children'])) {
+            foreach ($posts_data['data']['children'] as $post) {
+                if (isset($post['data'])) {
+                    $post_count++;
+                    $total_upvote_ratio += $post['data']['upvote_ratio'] ?? 0;
+                    $total_comments += $post['data']['num_comments'] ?? 0;
                     
-                    const reader = response.body.getReader();
-                    const decoder = new TextDecoder();
-
-                    while (true) {
-                        const { value, done } = await reader.read();
-                        if (done) break;
-                        
-                        const chunk = decoder.decode(value, { stream: true });
-                        const lines = chunk.split('\n').filter(line => line.startsWith('data: '));
-
-                        for (const line of lines) {
-                            const jsonStr = line.substring(6);
-                            if (jsonStr.trim() === '[DONE]') continue;
-                            const data = JSON.parse(jsonStr);
-                            if (data.choices[0].delta.content) {
-                                fullResponse += data.choices[0].delta.content;
-                                if(targetElement) {
-                                    targetElement.innerHTML = this.formatAIResponse(fullResponse) + cursor;
-                                } else {
-                                    this.composer.content = fullResponse;
-                                }
-                            }
-                        }
-                    }
-                } catch (error) {
-                    const errorMessage = `<p class="text-red-400">Error: ${error.message}</p>`;
-                    if(targetElement) targetElement.innerHTML = errorMessage;
-                    else this.composer.content = `AI Error: ${error.message}`;
-                    throw error;
-                } finally {
-                    if(targetElement) {
-                        targetElement.innerHTML = this.formatAIResponse(fullResponse);
-                        if (actionType === 'analyze') this.analyzer.result = fullResponse;
-                        if (actionType === 'summarize') this.summarizer.result = fullResponse;
-                    }
+                    $topPosts[] = [
+                        'id' => $post['data']['id'] ?? 'N/A',
+                        'title' => $post['data']['title'] ?? 'No Title',
+                        'subreddit' => $post['data']['subreddit_name_prefixed'] ?? 'N/A',
+                        'upvotes' => isset($post['data']['score']) ? number_format($post['data']['score']) : '0',
+                        'comments' => isset($post['data']['num_comments']) ? number_format($post['data']['num_comments']) : '0'
+                    ];
                 }
-            },
-            
-            renderChartError() {
-                const canvas = document.getElementById('trendingChart');
-                if(!canvas) return;
-                const ctx = canvas.getContext('2d');
-                ctx.clearRect(0, 0, canvas.width, canvas.height);
-                ctx.fillStyle = '#a1a1aa';
-                ctx.textAlign = 'center';
-                ctx.fillText('Could not load trending data.', canvas.width / 2, canvas.height / 2);
-            },
-
-            renderTrendingChart(data) {
-                if (this.trendingChart) this.trendingChart.destroy();
-                const truncatedLabels = data.labels.map(label => label.length > 25 ? label.substring(0, 22) + '...' : label);
-                const ctx = document.getElementById('trendingChart').getContext('2d');
-                this.trendingChart = new Chart(ctx, {
-                    type: 'bar',
-                    data: {
-                        labels: truncatedLabels,
-                        datasets: [{
-                            label: 'Upvotes (Past 24h)',
-                            data: data.scores,
-                            backgroundColor: 'rgba(212, 97, 28, 0.5)',
-                            borderColor: 'rgba(212, 97, 28, 1)',
-                            borderWidth: 1,
-                            borderRadius: 5
-                        }]
-                    },
-                    options: {
-                        indexAxis: 'y', responsive: true, maintainAspectRatio: false,
-                        plugins: {
-                            legend: { display: false },
-                            tooltip: {
-                                backgroundColor: '#1a1a1a', titleColor: '#EEEEEE', bodyColor: '#EEEEEE',
-                                borderColor: 'rgba(212, 97, 28, 1)', borderWidth: 1,
-                                callbacks: { title: (items) => data.labels[items[0].dataIndex] }
-                            }
-                        },
-                        scales: {
-                            x: { beginAtZero: true, grid: { color: 'rgba(255, 255, 255, 0.1)' }, ticks: { color: '#a1a1aa' } },
-                            y: { grid: { display: false }, ticks: { color: '#a1a1aa' } }
-                        }
-                    }
-                });
-            },
-
-            initParticles() {
-                const canvas = document.getElementById('particle-bg');
-                if (!canvas) return;
-                const ctx = canvas.getContext('2d');
-                let particles = [];
-                const particleCount = 70;
-
-                const resizeCanvas = () => {
-                    canvas.width = window.innerWidth;
-                    canvas.height = window.innerHeight;
-                };
-                
-                class Particle {
-                    constructor() {
-                        const colors = [`rgba(255, 255, 255, ${Math.random()*0.2+0.1})`, `rgba(212, 97, 28, ${Math.random()*0.3+0.1})`];
-                        this.color = colors[Math.floor(Math.random() * colors.length)];
-                        this.radius = Math.random() * 2 + 1;
-                        this.x = Math.random() * canvas.width;
-                        this.y = Math.random() * canvas.height;
-                        this.vx = (Math.random() - 0.5) * 0.4;
-                        this.vy = (Math.random() - 0.5) * 0.4;
-                    }
-                    draw() {
-                        ctx.beginPath();
-                        ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
-                        ctx.fillStyle = this.color;
-                        ctx.fill();
-                    }
-                    update() {
-                        this.x += this.vx;
-                        this.y += this.vy;
-                        if (this.x < 0 || this.x > canvas.width) this.vx *= -1;
-                        if (this.y < 0 || this.y > canvas.height) this.vy *= -1;
-                    }
-                }
-
-                for (let i = 0; i < particleCount; i++) particles.push(new Particle());
-                
-                const animate = () => {
-                    ctx.clearRect(0, 0, canvas.width, canvas.height);
-                    particles.forEach(p => { p.update(); p.draw(); });
-                    requestAnimationFrame(animate);
-                };
-
-                window.addEventListener('resize', resizeCanvas);
-                resizeCanvas();
-                animate();
             }
         }
+
+        // Calculate custom stats
+        $avg_upvote_rate = ($post_count > 0) ? round(($total_upvote_ratio / $post_count) * 100, 1) . '%' : 'N/A';
+        $avg_comments = ($post_count > 0) ? round($total_comments / $post_count, 1) : 'N/A';
+
+        $stats = [
+            'karma' => number_format($me_data['total_karma']),
+            'averageUpvoteRate' => $avg_upvote_rate,
+            'averageComments' => $avg_comments
+        ];
+
+        // 3. Get Custom Trending Data
+        $trending_subreddits = ['funny', 'AskReddit', 'gaming', 'aww', 'Music', 'pics', 'science', 'worldnews', 'todayilearned', 'movies', 'memes', 'news', 'space'];
+        $all_trending_posts = [];
+        foreach ($trending_subreddits as $sub) {
+            $trending_data = makeRedditApiRequest("/r/{$sub}/top?t=day&limit=5", $access_token);
+            if (isset($trending_data['data']['children'])) {
+                $all_trending_posts = array_merge($all_trending_posts, $trending_data['data']['children']);
+            }
+        }
+        
+        usort($all_trending_posts, fn($a, $b) => ($b['data']['score'] ?? 0) <=> ($a['data']['score'] ?? 0));
+        $top_trending = array_slice($all_trending_posts, 0, 7);
+
+        $trendingData = [
+            'labels' => array_map(fn($post) => $post['data']['title'] ?? 'Untitled', $top_trending),
+            'scores' => array_map(fn($post) => $post['data']['score'] ?? 0, $top_trending)
+        ];
+
+        echo json_encode([
+            'success' => true,
+            'stats' => $stats,
+            'topPosts' => $topPosts,
+            'topPostsTitle' => $topPostsTitle,
+            'trendingData' => $trendingData
+        ]);
     }
-</script>
+    // --- Action: Get Subreddit Info for AI Context ---
+    elseif ($action === 'get_subreddit_info') {
+        $subreddit = $_GET['subreddit'] ?? '';
+        if (empty($subreddit)) {
+            throw new Exception("Subreddit not specified.", 400);
+        }
+        // Remove 'r/' prefix if present
+        $subreddit = str_replace('r/', '', $subreddit);
+
+        $about_data = makeRedditApiRequest("/r/{$subreddit}/about", $access_token);
+        if (isset($about_data['error'])) throw new Exception("Could not fetch info for r/{$subreddit}.", $about_data['code']);
+        
+        $rules_data = makeRedditApiRequest("/r/{$subreddit}/about/rules", $access_token);
+        // This endpoint can fail without being critical, so we don't throw an exception
+        $rules = [];
+        if (!isset($rules_data['error']) && isset($rules_data['rules'])) {
+            foreach ($rules_data['rules'] as $rule) {
+                $rules[] = $rule['short_name'];
+            }
+        }
+
+        $info = [
+            'description' => $about_data['data']['public_description'] ?? 'No public description available.',
+            'rules' => !empty($rules) ? $rules : ['No specific rules listed via API.'],
+        ];
+
+        echo json_encode(['success' => true, 'info' => $info]);
+    }
+    // --- Action: Submit a new post ---
+    elseif ($action === 'submit_post' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+        $input = json_decode(file_get_contents('php://input'), true);
+        
+        $post_fields = [
+            'sr' => str_replace('r/', '', $input['subreddit']),
+            'title' => $input['title'],
+            'text' => $input['content'],
+            'kind' => 'self',
+            'api_type' => 'json'
+        ];
+
+        $result = makeRedditApiRequest('/api/submit', $access_token, 'POST', $post_fields);
+
+        if (isset($result['error'])) {
+             throw new Exception('Reddit API error: ' . ($result['message']['json']['errors'][0][1] ?? 'Unknown error'), $result['code']);
+        }
+
+        if (isset($result['json']['errors']) && count($result['json']['errors']) > 0) {
+             throw new Exception('Failed to post: ' . $result['json']['errors'][0][1]);
+        }
+        
+        echo json_encode(['success' => true, 'data' => $result]);
+    }
+    else {
+        throw new Exception("Invalid action specified.", 400);
+    }
+
+} catch (Exception $e) {
+    http_response_code($e->getCode() > 0 ? $e->getCode() : 500);
+    echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+}
+
+?>
