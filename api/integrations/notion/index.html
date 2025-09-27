@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Notion Tool - Blacnova Workspace</title>
+    <link rel="icon" href="https://www.blacnova.net/img/bn_orange.png" type="image/png">
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -40,21 +41,40 @@
         .stat-card:hover { transform: translateY(-4px); border-color: var(--primary); }
         .typing-cursor { display: inline-block; width: 8px; height: 1.2rem; background-color: var(--primary-light); animation: blink 0.7s infinite; vertical-align: middle; }
         @keyframes blink { 50% { opacity: 0; } }
+        @media (max-width: 768px) {
+            .sidebar {
+                transform: translateX(-100%);
+                transition: transform 0.3s ease-in-out;
+            }
+            .sidebar.open {
+                transform: translateX(0);
+            }
+        }
     </style>
 </head>
 <body class="h-screen flex" x-data="notionTool()" x-init="init()">
     <canvas id="particle-bg"></canvas>
+    
+    <header class="md:hidden fixed top-0 left-0 w-full bg-[var(--card-bg)]/80 backdrop-blur-lg border-b border-[var(--border-color)] z-20 flex items-center justify-between p-4">
+        <h1 class="text-lg font-bold flex items-center">
+            <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/e/e9/Notion-logo.svg/1200px-Notion-logo.svg.png" class="w-6 h-6 mr-2 invert">
+            Notion Tool
+        </h1>
+        <button @click="sidebarOpen = !sidebarOpen" class="text-2xl">
+            <i class="fas fa-bars"></i>
+        </button>
+    </header>
 
-    <aside class="w-64 bg-[var(--card-bg)]/80 backdrop-blur-lg border-r border-[var(--border-color)] flex flex-col flex-shrink-0 z-10">
-        <div class="p-6 border-b border-[var(--border-color)]">
+    <aside :class="{'open': sidebarOpen}" class="sidebar w-64 bg-[var(--card-bg)]/80 backdrop-blur-lg border-r border-[var(--border-color)] flex flex-col flex-shrink-0 z-10 fixed md:relative h-full">
+        <div class="p-6 border-b border-[var(--border-color)] hidden md:block">
              <h1 class="text-xl font-bold flex items-center">
                  <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/e/e9/Notion-logo.svg/1200px-Notion-logo.svg.png" class="w-7 h-7 mr-3 invert">
                  Notion Tool
              </h1>
              <p class="text-xs text-gray-400 mt-1">Blacnova Workspace</p>
         </div>
-        <nav class="flex-1 p-4 space-y-2">
-            <a href="#" @click.prevent="activeTab = 'dashboard'" class="sidebar-link flex items-center px-4 py-2 rounded-lg" :class="{ 'active': activeTab === 'dashboard' }">
+        <nav class="flex-1 p-4 space-y-2 mt-16 md:mt-0">
+            <a href="#" @click.prevent="switchTab('dashboard')" class="sidebar-link flex items-center px-4 py-2 rounded-lg" :class="{ 'active': activeTab === 'dashboard' }">
                 <i class="fas fa-home w-6"></i>
                 <span>Dashboard</span>
             </a>
@@ -66,20 +86,20 @@
                 <i class="fas fa-database w-6"></i>
                 <span>Database Explorer</span>
             </a>
-            <a href="#" @click.prevent="activeTab = 'ai_assistant'" class="sidebar-link flex items-center px-4 py-2 rounded-lg" :class="{ 'active': activeTab === 'ai_assistant' }">
+            <a href="#" @click.prevent="switchTab('ai_assistant')" class="sidebar-link flex items-center px-4 py-2 rounded-lg" :class="{ 'active': activeTab === 'ai_assistant' }">
                 <i class="fas fa-robot w-6"></i>
                 <span>AI Assistant</span>
             </a>
         </nav>
         <div class="p-4 border-t border-[var(--border-color)]">
-             <a href="../.." class="text-sm text-gray-400 hover:text-white transition-colors flex items-center"><i class="fas fa-arrow-left mr-2"></i> Back to Workspace</a>
+             <a href="../../.." class="text-sm text-gray-400 hover:text-white transition-colors flex items-center"><i class="fas fa-arrow-left mr-2"></i> Back to Workspace</a>
         </div>
     </aside>
 
-    <main class="flex-1 p-8 overflow-y-auto">
-        <!-- Dashboard -->
+    <main class="flex-1 p-4 md:p-8 overflow-y-auto mt-16 md:mt-0">
         <div x-show="activeTab === 'dashboard'" x-cloak>
             <div class="text-center mb-12">
+                <div class="flex justify-center mb-4"><i class="fas fa-home text-3xl text-primary"></i></div>
                 <h1 class="text-4xl md:text-5xl font-medium mb-4 text-white" x-text="`Welcome, ${stats.name}`">Welcome</h1>
                 <p class="text-lg text-gray-300 max-w-2xl mx-auto">Your Notion workspace at a glance.</p>
             </div>
@@ -121,9 +141,9 @@
             </div>
         </div>
 
-        <!-- Page Creator -->
         <div x-show="activeTab === 'creator'" x-cloak>
             <div class="text-center mb-12">
+                <div class="flex justify-center mb-4"><i class="fas fa-pen-to-square text-3xl text-primary"></i></div>
                 <h1 class="text-4xl md:text-5xl font-medium mb-4 text-white">Notion Page Creator</h1>
                 <p class="text-lg text-gray-300 max-w-2xl mx-auto">Craft and publish new pages directly to your Notion databases.</p>
             </div>
@@ -156,9 +176,9 @@
             </div>
         </div>
 
-        <!-- Database Explorer -->
         <div x-show="activeTab === 'explorer'" x-cloak>
             <div class="text-center mb-12">
+                <div class="flex justify-center mb-4"><i class="fas fa-database text-3xl text-primary"></i></div>
                 <h1 class="text-4xl md:text-5xl font-medium mb-4 text-white">Database Explorer</h1>
                 <p class="text-lg text-gray-300 max-w-2xl mx-auto">Select a database to view its pages.</p>
             </div>
@@ -201,9 +221,9 @@
             </div>
         </div>
         
-        <!-- AI Assistant -->
-         <div x-show="activeTab === 'ai_assistant'" x-cloak>
+        <div x-show="activeTab === 'ai_assistant'" x-cloak>
             <div class="text-center mb-12">
+                <div class="flex justify-center mb-4"><i class="fas fa-robot text-3xl text-primary"></i></div>
                 <h1 class="text-4xl md:text-5xl font-medium mb-4 text-white">AI Page Summarizer</h1>
                 <p class="text-lg text-gray-300 max-w-2xl mx-auto">Get a concise summary of any Notion page you have access to.</p>
             </div>
@@ -227,6 +247,7 @@
     <script>
         function notionTool() {
             return {
+                sidebarOpen: false,
                 activeTab: 'dashboard',
                 isLoading: false, // General purpose loader, used for AI
                 currentAction: '',
@@ -246,10 +267,11 @@
                     this.loadDashboardData();
                 },
 
-                async switchTab(tab) {
+                switchTab(tab) {
                     this.activeTab = tab;
+                    this.sidebarOpen = false; // Close sidebar on tab change
                     if ((tab === 'creator' || tab === 'explorer') && this.databases.length === 0) {
-                        await this.loadDatabases();
+                        this.loadDatabases();
                     }
                 },
 
@@ -529,4 +551,3 @@
     </script>
 </body>
 </html>
-
