@@ -212,9 +212,15 @@
     toastMessage: '',
     toastType: 'success',
     toastVisible: false,
+    user: {
+        full_name: '',
+        email: '',
+        role: ''
+    },
 
     init() {
-        document.addEventListener('auth-success', () => {
+        document.addEventListener('auth-success', (e) => {
+            this.user = e.detail;
             this.loadConnectedApps();
         });
         this.checkIntegrationStatus();
@@ -530,10 +536,8 @@
                                    <i class="fas fa-user"></i>
                                </div>
                                <div>
-                                   <h4 id="desktop-user-name" class="font-bold text-gray-800">User</h4>
-                                   <p id="desktop-user-email" class="text-sm text-gray-500">user@example.com</p>
-                                   <span id="mobile-user-name" class="hidden"></span>
-                                   <span id="mobile-user-email" class="hidden"></span>
+                                   <h4 id="desktop-user-name" class="font-bold text-gray-800" x-text="user.full_name || 'User'"></h4>
+                                   <p id="desktop-user-email" class="text-sm text-gray-500" x-text="user.email"></p>
                                </div>
                            </div>
                            <button id="logout-btn" class="w-full mt-4 text-left flex items-center px-3 py-2 text-sm rounded-md transition-colors text-gray-600 hover:bg-gray-50 hover:text-gray-900">
@@ -569,28 +573,64 @@
                             <h1 class="text-2xl md:text-3xl font-bold mb-1 text-gray-800">Account Profile</h1>
                             <p class="text-gray-500 mb-6">Manage your public profile and account details.</p>
                             <div class="space-y-4">
-                                <p>Content for profile settings goes here...</p>
+                                <div class="p-4 border rounded-lg">
+                                    <strong>Full Name:</strong> <span x-text="user.full_name"></span>
+                                </div>
+                                <div class="p-4 border rounded-lg">
+                                    <strong>Email:</strong> <span x-text="user.email"></span>
+                                </div>
+                                <div class="p-4 border rounded-lg">
+                                    <strong>Role:</strong> <span x-text="user.role" class="capitalize"></span>
+                                </div>
                             </div>
                         </div>
                         <div x-show="activeTab === 'billing'" style="display: none;" x-transition:enter="transition ease-out duration-300" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100">
                             <h1 class="text-2xl md:text-3xl font-bold mb-1 text-gray-800">Billing</h1>
                             <p class="text-gray-500 mb-6">Manage your subscription and view payment history.</p>
-                            <div class="space-y-4">
-                                <p>Content for billing settings goes here...</p>
+                            <div class="space-y-6">
+                                <div class="p-6 border rounded-lg bg-gray-50">
+                                    <h2 class="text-xl font-semibold text-gray-700">Blacnova Client</h2>
+                                    <p class="text-gray-600 mt-2">As a Blacnova client, you have unlimited free access to the Workspace and all its tools.</p>
+                                </div>
+                                <div class="p-6 border rounded-lg">
+                                    <h2 class="text-xl font-semibold text-gray-700">Standard Plan</h2>
+                                    <p class="text-2xl font-bold text-gray-800 mt-2">$10 <span class="text-base font-normal text-gray-500">/ month</span></p>
+                                    <p class="text-gray-600 mt-2">Get unlimited access to all tools and integrations. This plan is for users who are not Blacnova clients.</p>
+                                    <button class="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Subscribe Now</button>
+                                </div>
                             </div>
                         </div>
                         <div x-show="activeTab === 'security'" style="display: none;" x-transition:enter="transition ease-out duration-300" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100">
                             <h1 class="text-2xl md:text-3xl font-bold mb-1 text-gray-800">Security</h1>
                             <p class="text-gray-500 mb-6">Manage your password, two-factor authentication, and active sessions.</p>
                              <div class="space-y-4">
-                                <p>Content for security settings goes here...</p>
+                                <div class="p-6 border rounded-lg">
+                                    <h2 class="text-xl font-semibold text-gray-700">Password Reset</h2>
+                                    <p class="text-gray-600 mt-2 mb-4">Click the button below to send a password reset link to your email.</p>
+                                    <button @click="$dispatch('request-password-reset', { email: user.email })" class="px-4 py-2 bg-gray-800 text-white rounded-lg hover:bg-black">Request Password Reset</button>
+                                </div>
                             </div>
                         </div>
                          <div x-show="activeTab === 'integrations'" style="display: none;" x-transition:enter="transition ease-out duration-300" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100">
                             <h1 class="text-2xl md:text-3xl font-bold mb-1 text-gray-800">My Integrations</h1>
                             <p class="text-gray-500 mb-6">Manage your connected applications and services.</p>
                              <div class="space-y-4">
-                                <p>Content for managing integrations goes here...</p>
+                                <template x-for="app in connectedApps" :key="app.provider">
+                                    <div class="flex items-center justify-between p-4 border rounded-lg">
+                                        <div class="flex items-center">
+                                            <span class="app-icon !w-10 !h-10 !text-xl !mb-0 mr-4" :style="{ backgroundColor: app.color }">
+                                                <i :class="app.icon" class="text-white"></i>
+                                            </span>
+                                            <span class="font-semibold" x-text="app.name"></span>
+                                        </div>
+                                        <div>
+                                            <button @click="prepareToRemove(app)" class="px-3 py-1 bg-red-500 text-white text-sm rounded-lg hover:bg-red-600">Remove</button>
+                                        </div>
+                                    </div>
+                                </template>
+                                <div x-show="connectedApps.length === 0" class="text-center text-gray-500 py-8">
+                                    You have no integrations connected.
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -799,8 +839,16 @@
                     authOverlay.querySelector('#login-form').addEventListener('submit', handleLogin);
                     authOverlay.querySelector('#forgot-password-link-main').addEventListener('click', showForgotPassword);
                 }
-                function showForgotPassword(e) { e.preventDefault(); /* ... logic ... */ }
-                function showResetConfirmation() { /* ... logic ... */ }
+                function showForgotPassword(e) {
+                    e.preventDefault();
+                    authOverlay.innerHTML = `<div style="background:#111;padding:2rem;border-radius:20px;width:90%;max-width:400px;box-shadow:0 10px 30px rgba(0,0,0,.5)"><div style="text-align:center;margin-bottom:2rem"><h2 style="color:#fff;margin:0;font-weight:600">Reset Password</h2><p style="color:#888;margin:.5rem 0 0">Enter your email to get a reset link</p></div><form id="reset-form"><div style="margin-bottom:1.5rem"><label style="display:block;color:#ddd;margin-bottom:.5rem;font-size:.9rem">Email</label><input type="email" id="reset-email-main" required style="width:100%;padding:12px 16px;border-radius:12px;border:1px solid #333;background:#222;color:#fff;font-size:1rem;box-sizing:border-box"></div><button type="submit" style="width:100%;padding:12px;border-radius:12px;border:none;background:#d4611c;color:#fff;font-weight:600;font-size:1rem;cursor:pointer;transition:background .2s">Send Reset Link</button><p id="reset-error" style="color:#ff4444;text-align:center;margin:1rem 0 0;display:none"></p><p style="text-align:center;margin-top:1rem"><a href="#" id="back-to-login" style="color:#aaa;text-decoration:none;font-size:.9rem">Back to login</a></p></form></div>`;
+                    authOverlay.querySelector('#reset-form').addEventListener('submit', handlePasswordReset);
+                    authOverlay.querySelector('#back-to-login').addEventListener('click', (e) => { e.preventDefault(); showLogin(); });
+                }
+                function showResetConfirmation() { 
+                    authOverlay.innerHTML = `<div style="background:#111;padding:2rem;border-radius:20px;width:90%;max-width:400px;box-shadow:0 10px 30px rgba(0,0,0,.5);text-align:center;"><h2 style="color:#fff;margin:0;font-weight:600">Check Your Email</h2><p style="color:#888;margin:.5rem 0 0">If an account with that email exists, a password reset link has been sent.</p><div style="margin-top:1.5rem"><a href="#" id="back-to-login-confirm" style="color:#d4611c;text-decoration:none;">Back to login</a></div></div>`;
+                    authOverlay.querySelector('#back-to-login-confirm').addEventListener('click', (e) => { e.preventDefault(); showLogin(); });
+                }
                 async function handleLogin(e) {
                     e.preventDefault();
                     const email = document.getElementById('login-email-main').value;
@@ -814,8 +862,7 @@
                             const storage = rememberMe ? localStorage : sessionStorage;
                             storage.setItem('blacnova_auth', 'authenticated');
                             storage.setItem('blacnova_user', JSON.stringify(data.user));
-                            updateUserInfo(data.user);
-                            document.dispatchEvent(new CustomEvent('auth-success'));
+                            document.dispatchEvent(new CustomEvent('auth-success', { detail: data.user }));
                             authOverlay.style.opacity = '0';
                             setTimeout(() => {
                                 authOverlay.style.display = 'none';
@@ -831,13 +878,34 @@
                         errorElement.style.display = 'block';
                     }
                 }
-                async function handlePasswordReset(e) { /* ... logic ... */ }
-                function updateUserInfo(user) {
-                    const userNameElements = [document.getElementById('desktop-user-name'), document.getElementById('mobile-user-name')];
-                    const userEmailElements = [document.getElementById('desktop-user-email'), document.getElementById('mobile-user-email')];
-                    userNameElements.forEach(el => { if(el) el.textContent = user.full_name || 'User'; });
-                    userEmailElements.forEach(el => { if(el) el.textContent = user.email; });
+                async function handlePasswordReset(e) {
+                    e.preventDefault();
+                    if (e.detail && e.detail.email) { // From My Account page
+                        const email = e.detail.email;
+                        try {
+                            const response = await fetch('./api/auth/password_reset.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'request_reset', email }) });
+                            const data = await response.json();
+                            if(data.success) {
+                                document.querySelector('[x-data]').__x.$data.showToast('Password reset link sent.', 'success');
+                            } else {
+                                document.querySelector('[x-data]').__x.$data.showToast(data.message || 'An error occurred.', 'error');
+                            }
+                        } catch (error) {
+                            document.querySelector('[x-data]').__x.$data.showToast('A connection error occurred.', 'error');
+                        }
+                    } else { // From auth overlay
+                        const email = document.getElementById('reset-email-main').value;
+                        const errorElement = document.getElementById('reset-error');
+                        try {
+                            const response = await fetch('./api/auth/password_reset.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'request_reset', email }) });
+                            showResetConfirmation();
+                        } catch (error) {
+                            errorElement.textContent = 'A connection error occurred.';
+                            errorElement.style.display = 'block';
+                        }
+                    }
                 }
+                document.addEventListener('request-password-reset', handlePasswordReset);
                 function handleLogout() {
                     fetch('./api/auth/logout.php').finally(() => {
                         localStorage.clear();
@@ -851,11 +919,10 @@
                 const isAuthenticated = localStorage.getItem('blacnova_auth') === 'authenticated' || sessionStorage.getItem('blacnova_auth') === 'authenticated';
                 document.body.appendChild(authOverlay);
                 if (isAuthenticated && user) {
-                    updateUserInfo(user);
+                    document.dispatchEvent(new CustomEvent('auth-success', { detail: user }));
                     authOverlay.style.display = 'none';
                     document.documentElement.style.overflow = '';
                     document.body.style.overflow = '';
-                    document.dispatchEvent(new CustomEvent('auth-success'));
                 } else {
                     showLogin();
                 }
