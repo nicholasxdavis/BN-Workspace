@@ -547,10 +547,7 @@
                         </div>
                         <h3 class="font-bold text-lg mb-4 text-gray-800 px-2">Settings</h3>
                         <nav class="space-y-1">
-                            <a href="#" @click.prevent="activeTab = 'profile'" class="flex items-center px-3 py-2 text-sm rounded-md transition-colors" :class="{ 'bg-gray-100 text-gray-900 font-semibold': activeTab === 'profile', 'text-gray-600 hover:bg-gray-50 hover:text-gray-900': activeTab !== 'profile' }">
-                                <i class="fas fa-user-circle w-5 mr-3 text-gray-500"></i>
-                                <span>Profile</span>
-                            </a>
+                            
                             <a href="#" @click.prevent="activeTab = 'billing'" class="flex items-center px-3 py-2 text-sm rounded-md transition-colors" :class="{ 'bg-gray-100 text-gray-900 font-semibold': activeTab === 'billing', 'text-gray-600 hover:bg-gray-50 hover:text-gray-900': activeTab !== 'billing' }">
                                 <i class="fas fa-credit-card w-5 mr-3 text-gray-500"></i>
                                 <span>Billing</span>
@@ -569,21 +566,7 @@
 
                 <main class="w-full md:w-3/4 px-4">
                     <div class="bg-white p-6 md:p-8 rounded-lg border border-gray-200 min-h-[60vh]">
-                        <div x-show="activeTab === 'profile'" x-transition:enter="transition ease-out duration-300" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100">
-                            <h1 class="text-2xl md:text-3xl font-bold mb-1 text-gray-800">Account Profile</h1>
-                            <p class="text-gray-500 mb-6">Manage your public profile and account details.</p>
-                            <div class="space-y-4">
-                                <div class="p-4 border rounded-lg">
-                                    <strong>Full Name:</strong> <span x-text="user.full_name"></span>
-                                </div>
-                                <div class="p-4 border rounded-lg">
-                                    <strong>Email:</strong> <span x-text="user.email"></span>
-                                </div>
-                                <div class="p-4 border rounded-lg">
-                                    <strong>Role:</strong> <span x-text="user.role" class="capitalize"></span>
-                                </div>
-                            </div>
-                        </div>
+                        
                         <div x-show="activeTab === 'billing'" style="display: none;" x-transition:enter="transition ease-out duration-300" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100">
                             <h1 class="text-2xl md:text-3xl font-bold mb-1 text-gray-800">Billing</h1>
                             <p class="text-gray-500 mb-6">Manage your subscription and view payment history.</p>
@@ -591,12 +574,6 @@
                                 <div class="p-6 border rounded-lg bg-gray-50">
                                     <h2 class="text-xl font-semibold text-gray-700">Blacnova Client</h2>
                                     <p class="text-gray-600 mt-2">As a Blacnova client, you have unlimited free access to the Workspace and all its tools.</p>
-                                </div>
-                                <div class="p-6 border rounded-lg">
-                                    <h2 class="text-xl font-semibold text-gray-700">Standard Plan</h2>
-                                    <p class="text-2xl font-bold text-gray-800 mt-2">$10 <span class="text-base font-normal text-gray-500">/ month</span></p>
-                                    <p class="text-gray-600 mt-2">Get unlimited access to all tools and integrations. This plan is for users who are not Blacnova clients.</p>
-                                    <button class="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Subscribe Now</button>
                                 </div>
                             </div>
                         </div>
