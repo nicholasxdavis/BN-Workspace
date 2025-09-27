@@ -33,10 +33,47 @@ if (isset($_GET['code'])) {
 
     // --- Handle Reddit Token Exchange ---
     if ($provider === 'reddit') {
-        // ... existing reddit code ...
+        $token_url = 'https://www.reddit.com/api/v1/access_token';
+        $post_data = [
+            'grant_type' => 'authorization_code',
+            'code' => $code,
+            'redirect_uri' => REDDIT_REDIRECT_URI,
+        ];
+        $auth_header = REDDIT_CLIENT_ID . ':' . REDDIT_CLIENT_SECRET;
+
+        $ch = curl_init($token_url);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($post_data));
+        curl_setopt($ch, CURLOPT_USERPWD, $auth_header);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, ['User-Agent: BN-Workspace/1.0']);
+        $response = curl_exec($ch);
+        curl_close($ch);
+        $token_data = json_decode($response, true);
+
     // --- Handle Notion Token Exchange ---
     } elseif ($provider === 'notion') {
-        // ... existing notion code ...
+        $token_url = 'https://api.notion.com/v1/oauth/token';
+        $post_data = [
+            'grant_type' => 'authorization_code',
+            'code' => $code,
+            'redirect_uri' => NOTION_REDIRECT_URI,
+        ];
+        $auth_header = base64_encode(NOTION_CLIENT_ID . ':' . NOTION_CLIENT_SECRET);
+
+        $ch = curl_init($token_url);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($post_data));
+        curl_setopt($ch, CURLOPT_HTTPHEADER, [
+            'Authorization: Basic ' . $auth_header,
+            'Content-Type: application/json',
+            'Notion-Version: 2022-06-28'
+        ]);
+        $response = curl_exec($ch);
+        curl_close($ch);
+        $token_data = json_decode($response, true);
+
     // --- Handle Dropbox Token Exchange ---
     } elseif ($provider === 'dropbox') {
         $token_url = 'https://api.dropboxapi.com/oauth2/token';
@@ -64,24 +101,30 @@ if (isset($_GET['code'])) {
         $user_id = $_SESSION['user_id'];
         $access_token = encrypt_token($token_data['access_token']);
         
+        // Set provider-specific data to null by default
         $refresh_token = null;
         $scope = null;
         $expires_at = null;
-        $provider_user_id = $token_data['account_id'] ?? null;
-
+        $provider_user_id = null;
+        
         if ($provider === 'reddit' || $provider === 'dropbox') {
             $refresh_token = isset($token_data['refresh_token']) ? encrypt_token($token_data['refresh_token']) : null;
             $scope = $token_data['scope'] ?? null;
             if (isset($token_data['expires_in'])) {
                 $expires_at = (new DateTime())->add(new DateInterval('PT' . $token_data['expires_in'] . 'S'))->format('Y-m-d H:i:s');
             }
+             if($provider === 'dropbox') {
+                $provider_user_id = $token_data['account_id'] ?? null;
+             }
+        } elseif ($provider === 'notion'){
+             $provider_user_id = $token_data['owner']['user']['id'] ?? null;
         }
         
         // Unset provider from session after use
         unset($_SESSION['oauth_provider']);
 
         try {
-            // Use an UPSERT query
+            // Use an UPSERT query to either INSERT a new record or UPDATE an existing one
             $stmt = $pdo->prepare(
                 "INSERT INTO user_integrations (user_id, provider, access_token, refresh_token, expires_at, scope, provider_user_id)
                  VALUES (:user_id, :provider, :access_token, :refresh_token, :expires_at, :scope, :provider_user_id)
@@ -119,3 +162,4 @@ if (isset($_GET['code'])) {
     }
 }
 ?>
+
