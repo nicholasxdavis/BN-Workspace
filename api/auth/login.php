@@ -17,7 +17,7 @@ session_start();
 $host = 'roscwoco0sc8w08kwsko8ko8';
 $db = 'default'; // Using the default database name
 $user = 'mariadb';
-$pass = 'JswmqQok4swQf1JDKQD1WE311UPXBBE6NYJv6jRSP91dbkZDYj5sMc5sehC1LQTu';
+$pass = 'JswmqQf1JDKQD1WE311UPXBBE6NYJv6jRSP91dbkZDYj5sMc5sehC1LQTu';
 $charset = 'utf8mb4';
 $port = 3306;
 
@@ -61,11 +61,9 @@ try {
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
             );
             
-            -- Insert default admin user (password: Blacnova2025)
             INSERT INTO users (email, password_hash, full_name, role) 
             VALUES ('admin@blacnova.com', '" . password_hash('Blacnova2025', PASSWORD_DEFAULT) . "', 'Admin User', 'admin');
             
-            -- Insert some default settings
             INSERT INTO settings (setting_key, setting_value) VALUES 
             ('site_title', 'Blacnova'),
             ('site_description', 'Premium Development Services'),
@@ -74,7 +72,7 @@ try {
         ");
     }
 
-    // NEW: Check and create user_integrations table
+    // Check and create user_integrations table
     $tableCheck = $pdo->query("SHOW TABLES LIKE 'user_integrations'");
     if ($tableCheck->rowCount() == 0) {
         $pdo->exec("
@@ -95,18 +93,35 @@ try {
         ");
     }
     
-    // NEW: Check and create user_notes table
-    $tableCheck = $pdo->query("SHOW TABLES LIKE 'user_notes'");
-    if ($tableCheck->rowCount() == 0) {
+    // Check and create notes-related tables
+    $tableCheckFolders = $pdo->query("SHOW TABLES LIKE 'user_note_folders'");
+    if ($tableCheckFolders->rowCount() == 0) {
+        $pdo->exec("
+            CREATE TABLE user_note_folders (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                user_id INT NOT NULL,
+                name VARCHAR(255) NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            );
+        ");
+    }
+
+    $tableCheckNotes = $pdo->query("SHOW TABLES LIKE 'user_notes'");
+    if ($tableCheckNotes->rowCount() == 0) {
         $pdo->exec("
             CREATE TABLE user_notes (
                 id INT AUTO_INCREMENT PRIMARY KEY,
                 user_id INT NOT NULL,
+                folder_id INT NULL,
                 title VARCHAR(255) NOT NULL,
                 content TEXT,
+                content_text TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+                FOREIGN KEY (folder_id) REFERENCES user_note_folders(id) ON DELETE SET NULL
             );
         ");
     }
