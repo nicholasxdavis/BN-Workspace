@@ -94,6 +94,23 @@ try {
             );
         ");
     }
+    
+    // NEW: Check and create user_notes table
+    $tableCheck = $pdo->query("SHOW TABLES LIKE 'user_notes'");
+    if ($tableCheck->rowCount() == 0) {
+        $pdo->exec("
+            CREATE TABLE user_notes (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                user_id INT NOT NULL,
+                title VARCHAR(255) NOT NULL,
+                content TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            );
+        ");
+    }
+
 
 } catch (\PDOException $e) {
     echo json_encode(['success' => false, 'message' => 'Table creation failed: ' . $e->getMessage()]);

@@ -389,8 +389,8 @@
                         <h2 class="text-2xl font-medium text-white">Our Tools</h2>
                         <i class="fas fa-chevron-down text-gray-400 transition-transform" :class="{ 'rotate-180': !open }"></i>
                     </div>
-                    <div x-show="open" x-transition:enter="transition ease-out duration-300" x-transition:enter-start="opacity-0 -translate-y-4" x-transition:enter-end="opacity-100 translate-y-0" x-transition:leave="transition ease-in duration-200" x-transition:leave-start="opacity-100 translate-y-0" x-transition:leave-end="opacity-0 -translate-y-4" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
-                        <div class="app-card">
+                     <div x-show="open" x-transition:enter="transition ease-out duration-300" x-transition:enter-start="opacity-0 -translate-y-4" x-transition:enter-end="opacity-100 translate-y-0" x-transition:leave="transition ease-in duration-200" x-transition:leave-start="opacity-100 translate-y-0" x-transition:leave-end="opacity-0 -translate-y-4" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
+                         <a href="./api/tools/notes/index.html" class="app-card block">
                             <div class="content">
                                 <div class="flex items-start mb-4">
                                     <span class="app-icon !w-12 !h-12 !text-2xl !mb-0 mr-4 flex-shrink-0" style="background: #1a1a1a;">
@@ -404,7 +404,7 @@
                                 <p class="text-gray-400 text-sm flex-grow">Jot down ideas and keep track of your thoughts.</p>
                             </div>
                             <div class="circle-before"></div>
-                        </div>
+                        </a>
 
                         <div class="app-card">
                             <div class="content">
