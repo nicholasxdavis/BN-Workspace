@@ -36,59 +36,67 @@ try {
     exit;
 }
 
-// Check if tables exist and are up-to-date
+// Check if tables exist, if not create them
 try {
-    // Users Table
-    $pdo->query("SHOW TABLES LIKE 'users'")->rowCount() == 0 && $pdo->exec("
-        CREATE TABLE users (
-            id INT AUTO_INCREMENT PRIMARY KEY, email VARCHAR(255) NOT NULL UNIQUE, password_hash VARCHAR(255) NOT NULL,
-            full_name VARCHAR(255), role ENUM('admin', 'editor', 'viewer') DEFAULT 'viewer',
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-        );
-        INSERT INTO users (email, password_hash, full_name, role) 
-        VALUES ('admin@blacnova.com', '" . password_hash('Blacnova2025', PASSWORD_DEFAULT) . "', 'Admin User', 'admin');
-    ");
-
-    // User Integrations Table
-    $pdo->query("SHOW TABLES LIKE 'user_integrations'")->rowCount() == 0 && $pdo->exec("
-        CREATE TABLE user_integrations (
-            id INT AUTO_INCREMENT PRIMARY KEY, user_id INT NOT NULL, provider VARCHAR(50) NOT NULL, access_token TEXT NOT NULL,
-            refresh_token TEXT, expires_at TIMESTAMP NULL, scope VARCHAR(255), provider_user_id VARCHAR(255),
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE, UNIQUE KEY (user_id, provider)
-        );
-    ");
-    
-    // User Note Folders Table
-    $pdo->query("SHOW TABLES LIKE 'user_note_folders'")->rowCount() == 0 && $pdo->exec("
-        CREATE TABLE user_note_folders (
-            id INT AUTO_INCREMENT PRIMARY KEY, user_id INT NOT NULL, name VARCHAR(255) NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-        );
-    ");
-
-    // User Notes Table
-    if ($pdo->query("SHOW TABLES LIKE 'user_notes'")->rowCount() == 0) {
+    // Check if users table exists
+    $tableCheck = $pdo->query("SHOW TABLES LIKE 'users'");
+    if ($tableCheck->rowCount() == 0) {
+        // Create tables
         $pdo->exec("
-            CREATE TABLE user_notes (
-                id INT AUTO_INCREMENT PRIMARY KEY, user_id INT NOT NULL, folder_id INT NULL, title VARCHAR(255) NOT NULL,
-                content TEXT, content_text TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            CREATE TABLE users (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                email VARCHAR(255) NOT NULL UNIQUE,
+                password_hash VARCHAR(255) NOT NULL,
+                full_name VARCHAR(255),
+                role ENUM('admin', 'editor', 'viewer') DEFAULT 'viewer',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+            );
+            
+            CREATE TABLE settings (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                setting_key VARCHAR(255) NOT NULL UNIQUE,
+                setting_value TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+            );
+            
+            -- Insert default admin user (password: Blacnova2025)
+            INSERT INTO users (email, password_hash, full_name, role) 
+            VALUES ('admin@blacnova.com', '" . password_hash('Blacnova2025', PASSWORD_DEFAULT) . "', 'Admin User', 'admin');
+            
+            -- Insert some default settings
+            INSERT INTO settings (setting_key, setting_value) VALUES 
+            ('site_title', 'Blacnova'),
+            ('site_description', 'Premium Development Services'),
+            ('primary_color', '#d4611c'),
+            ('admin_email', 'admin@blacnova.com');
+        ");
+    }
+
+    // NEW: Check and create user_integrations table
+    $tableCheck = $pdo->query("SHOW TABLES LIKE 'user_integrations'");
+    if ($tableCheck->rowCount() == 0) {
+        $pdo->exec("
+            CREATE TABLE user_integrations (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                user_id INT NOT NULL,
+                provider VARCHAR(50) NOT NULL,
+                access_token TEXT NOT NULL,
+                refresh_token TEXT,
+                expires_at TIMESTAMP NULL,
+                scope VARCHAR(255),
+                provider_user_id VARCHAR(255),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                 FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-                FOREIGN KEY (folder_id) REFERENCES user_note_folders(id) ON DELETE SET NULL
+                UNIQUE KEY (user_id, provider)
             );
         ");
-    } else {
-        // **DB MIGRATION FIX**: Check if 'folder_id' column exists and add it if not.
-        $checkColumn = $pdo->query("SHOW COLUMNS FROM `user_notes` LIKE 'folder_id'");
-        if ($checkColumn->rowCount() == 0) {
-            $pdo->exec("ALTER TABLE `user_notes` ADD COLUMN `folder_id` INT NULL AFTER `user_id`, ADD FOREIGN KEY (`folder_id`) REFERENCES `user_note_folders`(`id`) ON DELETE SET NULL;");
-        }
     }
 
 } catch (\PDOException $e) {
-    echo json_encode(['success' => false, 'message' => 'Database setup/migration failed: ' . $e->getMessage()]);
+    echo json_encode(['success' => false, 'message' => 'Table creation failed: ' . $e->getMessage()]);
     exit;
 }
 
@@ -111,12 +119,16 @@ try {
     
     if ($user && password_verify($password, $user['password_hash'])) {
         // Successful login
-        unset($user['password_hash']);
+        unset($user['password_hash']); // Don't send password back
+        
         $_SESSION['user_id'] = $user['id'];
         $_SESSION['email'] = $user['email'];
         $_SESSION['role'] = $user['role'];
         
-        echo json_encode(['success' => true, 'user' => $user]);
+        echo json_encode([
+            'success' => true, 
+            'user' => $user
+        ]);
     } else {
         // Invalid credentials
         echo json_encode(['success' => false, 'message' => 'Invalid email or password']);
