@@ -28,4 +28,8 @@ define('DROPBOX_APP_KEY', getenv('DROPBOX_APP_KEY'));
 define('DROPBOX_SECRET', getenv('DROPBOX_SECRET'));
 define('DROPBOX_REDIRECT_URI', ROOT_URL . 'api/integrations/callback.php');
 
+// --- Meta (Facebook) API Credentials ---
+define('META_APP_ID', '31583131644635046');
+define('META_APP_SECRET', '46f212ccc32644e1fa1484f79e78bb8e');
+define('META_REDIRECT_URI', ROOT_URL . 'api/integrations/callback.php');
 ?>
