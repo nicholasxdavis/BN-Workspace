@@ -13,310 +13,49 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
     <style>
         :root { --primary: #d4611c; --primary-light: #e67a35; --dark-bg: #101010; --card-bg: #1a1a1a; --border-color: rgba(255, 255, 255, 0.1); --text-primary: #EEEEEE; --text-secondary: #a1a1aa; }
-        body { font-family: 'Inter', sans-serif; background-color: var(--dark-bg); color: var(--text-primary); overflow: hidden; }
+        html, body { font-family: 'Inter', sans-serif; background-color: var(--dark-bg); color: var(--text-primary); overflow: hidden; height: 100%; }
         #particle-bg { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: -1; opacity: 0.7; }
         [x-cloak] { display: none !important; }
         .loader { border: 4px solid rgba(255, 255, 255, 0.2); border-left-color: var(--primary); border-radius: 50%; width: 24px; height: 24px; animation: spin 1s linear infinite; }
         @keyframes spin { to { transform: rotate(360deg); } }
-        /* Quill Editor Styling */
-        .ql-toolbar { border-radius: 0.5rem 0.5rem 0 0; background: #2a2a2a; border: 1px solid var(--border-color) !important; }
-        .ql-container { border-radius: 0 0 0.5rem 0.5rem; background: var(--card-bg); border: 1px solid var(--border-color) !important; color: var(--text-primary); font-size: 1rem; }
-        .ql-editor { font-family: 'Inter', sans-serif; min-height: 200px; }
+        .ql-toolbar { background: #2a2a2a !important; border: 1px solid var(--border-color) !important; border-radius: 0.5rem 0.5rem 0 0; }
+        .ql-container { background: var(--card-bg); border: 1px solid var(--border-color) !important; color: var(--text-primary); font-size: 1rem; border-radius: 0 0 0.5rem 0.5rem; }
+        .ql-editor { font-family: 'Inter', sans-serif; height: 100%; }
         .ql-snow .ql-stroke { stroke: var(--text-secondary); }
         .ql-snow .ql-picker-label { color: var(--text-secondary); }
     </style>
 </head>
-<body class="h-screen flex flex-col" x-data="notesApp()" x-init="init()">
+<body x-data="notesApp()" x-init="init()" class="h-full flex flex-col">
     <canvas id="particle-bg"></canvas>
 
-    <header class="md:hidden bg-[var(--card-bg)]/80 backdrop-blur-lg border-b border-[var(--border-color)] p-4 flex justify-between items-center flex-shrink-0 z-20">
-        <button @click="view = 'folders'"><i class="fas fa-folder"></i></button>
-        <h1 class="text-lg font-bold" x-text="mobileTitle"></h1>
-        <button @click="view = 'editor'"><i class="fas fa-pen-to-square"></i></button>
-    </header>
-
-    <div class="flex flex-1 overflow-hidden relative z-10">
-        <aside class="w-full md:w-64 bg-[var(--card-bg)]/80 backdrop-blur-lg border-r border-[var(--border-color)] flex flex-col flex-shrink-0 absolute md:relative inset-y-0 left-0 z-30 md:z-auto transition-transform duration-300"
-            :class="{'translate-x-0': view === 'folders', '-translate-x-full': view !== 'folders'}">
-            <div class="p-6 border-b border-[var(--border-color)] hidden md:block">
+    <div class="flex-1 flex overflow-hidden relative z-10">
+        <aside class="w-full md:w-[350px] bg-[var(--card-bg)]/80 backdrop-blur-lg border-r border-[var(--border-color)] flex flex-col flex-shrink-0 absolute md:relative inset-y-0 left-0 z-20 transition-transform duration-300"
+               :class="{'translate-x-0': !activeNote || !isMobile, '-translate-x-full': activeNote && isMobile}">
+            <div class="p-4 border-b border-[var(--border-color)] flex-shrink-0">
                 <h1 class="text-xl font-bold flex items-center"><i class="fas fa-sticky-note text-2xl mr-3 text-primary"></i>Notes</h1>
+                <a href="../.." class="text-xs text-gray-400 hover:text-white transition-colors mt-2 flex items-center"><i class="fas fa-arrow-left mr-2"></i> Back to Workspace</a>
             </div>
-            <div class="p-4 flex justify-between items-center md:hidden border-b border-border-color">
-                <h2 class="font-bold">Folders</h2>
-                <button @click="view = 'notes'"><i class="fas fa-times"></i></button>
-            </div>
-            <nav class="flex-1 p-4 space-y-4">
-                <a href="../.." class="text-sm text-gray-400 hover:text-white transition-colors flex items-center"><i class="fas fa-arrow-left mr-2"></i> Back to Workspace</a>
-                <div>
-                    <button @click="createNewFolder()" class="w-full text-left text-sm text-gray-400 hover:text-white p-2 rounded-lg flex justify-between items-center">
-                        <span>Folders</span>
-                        <i class="fas fa-plus"></i>
-                    </button>
-                    <div class="mt-2 space-y-1">
-                        <a href="#" @click.prevent="setActiveFolder(null)" class="block px-4 py-2 rounded-lg text-sm" :class="activeFolderId === null ? 'bg-primary/20 text-white' : 'text-gray-300 hover:bg-white/5'">All Notes</a>
-                        <template x-for="folder in folders" :key="folder.id">
-                            <a href="#" @click.prevent="setActiveFolder(folder.id)" class="block px-4 py-2 rounded-lg text-sm" :class="activeFolderId === folder.id ? 'bg-primary/20 text-white' : 'text-gray-300 hover:bg-white/5'" x-text="folder.name"></a>
-                        </template>
-                    </div>
-                </div>
-            </nav>
-        </aside>
-
-        <div class="w-full md:w-80 border-r border-[var(--border-color)] flex flex-col bg-black/10 absolute md:relative inset-y-0 left-0 z-20 md:z-auto transition-transform duration-300"
-             :class="{'translate-x-0': view === 'notes', '-translate-x-full md:translate-x-0': view !== 'notes'}">
-            <div class="p-4 border-b border-[var(--border-color)] flex justify-between items-center flex-shrink-0">
+            <div class="p-4 flex justify-between items-center border-b border-[var(--border-color)] flex-shrink-0">
                 <input type="search" x-model="searchTerm" placeholder="Search notes..." class="bg-[#2a2a2a] border border-[var(--border-color)] rounded-lg px-3 py-1.5 w-full text-sm">
                 <button @click="createNewNote()" class="ml-2 flex-shrink-0 bg-primary h-8 w-8 rounded-lg flex items-center justify-center"><i class="fas fa-plus"></i></button>
             </div>
-            <div class="flex-1 overflow-y-auto">
-                <template x-for="note in filteredNotes" :key="note.id">
-                    <div @click="selectNote(note.id)" class="p-4 cursor-pointer border-l-4" :class="activeNote && activeNote.id === note.id ? 'bg-primary/20 border-primary' : 'border-transparent hover:bg-white/5'">
-                        <h3 class="font-bold truncate" x-text="note.title"></h3>
-                        <p class="text-sm text-gray-400 truncate mt-1" x-text="note.snippet || 'No additional text'"></p>
-                    </div>
-                </template>
-            </div>
-        </div>
-
-        <main class="flex-1 flex flex-col p-4 md:p-6 bg-dark-bg absolute md:relative inset-0 z-10 md:z-auto"
-              :class="{'block': view === 'editor', 'hidden md:flex': view !== 'editor'}">
-             <div class="md:hidden flex items-center mb-4">
-                <button @click="view = 'notes'" class="text-gray-300 mr-4"><i class="fas fa-chevron-left"></i> Back</button>
-            </div>
-            <template x-if="activeNote">
-                <div class="flex flex-col h-full">
-                    <div class="flex justify-between items-center mb-4 flex-shrink-0">
-                        <input type="text" x-model="activeNote.title" @input.debounce.500ms="saveNote()" class="bg-transparent text-2xl md:text-3xl font-bold w-full outline-none pr-4">
-                        <div class="flex items-center space-x-4">
-                            <button @click="aiAction('summarize')" :disabled="isAISummarizing" class="text-gray-400 hover:text-primary transition" title="AI Summarize">
-                                <i class="fas fa-wand-magic-sparkles"></i>
-                            </button>
-                            <button @click="aiAction('continue')" :disabled="isAIContinuing" class="text-gray-400 hover:text-primary transition" title="AI Continue Writing">
-                                <i class="fas fa-pen-fancy"></i>
-                            </button>
-                            <button @click="deleteNote()" class="text-gray-400 hover:text-red-500 transition" title="Delete Note"><i class="fas fa-trash"></i></button>
+            
+            <div class="flex-1 overflow-y-auto p-2">
+                <div class="px-2 pb-2">
+                     <button @click="createNewFolder()" class="w-full text-left text-xs text-gray-400 hover:text-white py-1 flex justify-between items-center">
+                        <span>FOLDERS</span><i class="fas fa-plus"></i>
+                    </button>
+                    <a href="#" @click.prevent="setActiveFolder(null)" class="block px-2 py-1.5 rounded-md text-sm truncate" :class="activeFolderId === null ? 'bg-primary/20 text-white' : 'text-gray-300 hover:bg-white/5'">All Notes</a>
+                    <template x-for="folder in folders" :key="folder.id">
+                        <a href="#" @click.prevent="setActiveFolder(folder.id)" class="block px-2 py-1.5 rounded-md text-sm truncate" :class="activeFolderId === folder.id ? 'bg-primary/20 text-white' : 'text-gray-300 hover:bg-white/5'" x-text="folder.name"></a>
+                    </template>
+                </div>
+                
+                <div class="mt-4 px-2">
+                    <h3 class="text-xs text-gray-400">NOTES</h3>
+                    <template x-for="note in filteredNotes" :key="note.id">
+                        <div @click="selectNote(note.id)" class="p-2 mt-1 cursor-pointer rounded-md" :class="activeNote && activeNote.id === note.id ? 'bg-primary/20' : 'hover:bg-white/5'">
+                            <h4 class="font-bold truncate text-sm" x-text="note.title || 'Untitled Note'"></h4>
+                            <p class="text-xs text-gray-400 truncate mt-1" x-text="note.snippet || 'No additional text'"></p>
                         </div>
-                    </div>
-                    <div x-ref="editor" class="flex-grow min-h-0"></div>
-                </div>
-            </template>
-            <template x-if="!activeNote && !isLoading">
-                <div class="flex-1 flex items-center justify-center text-center text-gray-500">
-                    <div>
-                        <i class="fas fa-file-alt text-6xl mb-4"></i>
-                        <h2 class="text-2xl">Select a note or create a new one.</h2>
-                    </div>
-                </div>
-            </template>
-            <div x-show="isLoading" class="flex-1 flex items-center justify-center"><div class="loader !w-12 !h-12"></div></div>
-        </main>
-    </div>
-
-    <script>
-    function notesApp() {
-        return {
-            folders: [],
-            notes: [],
-            activeFolderId: null,
-            activeNote: null,
-            searchTerm: '',
-            isLoading: true,
-            quill: null,
-            apiKey: null,
-            isAISummarizing: false,
-            isAIContinuing: false,
-            view: 'notes', // 'folders', 'notes', 'editor'
-
-            get mobileTitle() {
-                if (this.view === 'folders') return 'Folders';
-                if (this.view === 'notes') return 'All Notes';
-                if (this.view === 'editor') return this.activeNote ? this.activeNote.title : 'Editor';
-                return 'Notes';
-            },
-
-            async init() {
-                this.initParticles();
-                await this.loadApiKey();
-                await this.loadAllData();
-                this.isLoading = false;
-                if (window.innerWidth >= 768) { // md breakpoint
-                    this.view = 'editor';
-                }
-            },
-
-            async loadApiKey() {
-                try {
-                    const response = await fetch(`../../auth/key_handler.php`);
-                    const data = await response.json();
-                    if (data.success) this.apiKey = data.apiKey;
-                } catch (e) { console.error("Could not load API key."); }
-            },
-
-            async loadAllData() {
-                const response = await fetch('./notes_api.php?action=get_all_data');
-                const data = await response.json();
-                if (data.success) {
-                    this.folders = data.folders;
-                    this.notes = data.notes;
-                }
-            },
-
-            get filteredNotes() {
-                let notesInFolder = this.notes;
-                if (this.activeFolderId !== null) {
-                    notesInFolder = this.notes.filter(n => n.folder_id == this.activeFolderId);
-                }
-                if (!this.searchTerm) return notesInFolder;
-                return notesInFolder.filter(note =>
-                    note.title.toLowerCase().includes(this.searchTerm.toLowerCase()) ||
-                    (note.snippet && note.snippet.toLowerCase().includes(this.searchTerm.toLowerCase()))
-                );
-            },
-
-            setActiveFolder(folderId) {
-                this.activeFolderId = folderId;
-                this.activeNote = null;
-                this.view = 'notes'; // Switch view on mobile
-            },
-
-            async selectNote(noteId) {
-                this.isLoading = true;
-                this.view = 'editor';
-                const response = await fetch(`./notes_api.php?action=get_note&id=${noteId}`);
-                const data = await response.json();
-                if (data.success) {
-                    this.activeNote = data.note;
-                    this.$nextTick(() => this.initQuill());
-                }
-                this.isLoading = false;
-            },
-
-            initQuill() {
-                if (this.quill) { this.quill.off('text-change', this.onQuillChange); }
-                this.quill = new Quill(this.$refs.editor, {
-                    theme: 'snow',
-                    modules: { toolbar: [
-                        [{ 'header': [1, 2, false] }],
-                        ['bold', 'italic', 'underline'],
-                        [{'list': 'ordered'}, {'list': 'bullet'}]
-                    ]}
-                });
-                this.quill.root.innerHTML = this.activeNote.content;
-                this.onQuillChange = Alpine.debounce(() => this.saveNote(), 500);
-                this.quill.on('text-change', this.onQuillChange);
-            },
-
-            onQuillChange: null,
-
-            async createNewNote() {
-                this.isLoading = true;
-                const response = await fetch('./notes_api.php?action=create_note', {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ title: 'Untitled Note', folder_id: this.activeFolderId })
-                });
-                const data = await response.json();
-                if (data.success) {
-                    await this.loadAllData();
-                    await this.selectNote(data.id);
-                }
-                this.isLoading = false;
-            },
-
-            async saveNote() {
-                if (!this.activeNote || !this.quill) return;
-                this.activeNote.content = this.quill.root.innerHTML;
-                this.activeNote.content_text = this.quill.getText();
-                
-                await fetch('./notes_api.php?action=update_note', {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(this.activeNote)
-                });
-                
-                const noteInList = this.notes.find(n => n.id === this.activeNote.id);
-                if (noteInList) {
-                    noteInList.title = this.activeNote.title;
-                    noteInList.snippet = this.activeNote.content_text.substring(0, 100);
-                }
-            },
-            
-            async deleteNote() {
-                if (!this.activeNote) return;
-                if (confirm('Are you sure you want to delete this note?')) {
-                    await fetch('./notes_api.php?action=delete_note', {
-                        method: 'POST', headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ id: this.activeNote.id })
-                    });
-                    this.activeNote = null;
-                    this.view = 'notes';
-                    this.loadAllData();
-                }
-            },
-
-            async createNewFolder() {
-                const name = prompt("Enter folder name:", "New Folder");
-                if (name) {
-                    await fetch('./notes_api.php?action=create_folder', {
-                        method: 'POST', headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ name: name })
-                    });
-                    this.loadAllData();
-                }
-            },
-            
-            async aiAction(type) {
-                // Same AI Action logic as before...
-            },
-            
-            initParticles() {
-                const canvas = document.getElementById('particle-bg');
-                if (!canvas) return;
-                const ctx = canvas.getContext('2d');
-                let particles = [];
-                const particleCount = 70;
-
-                const resizeCanvas = () => {
-                    canvas.width = window.innerWidth;
-                    canvas.height = window.innerHeight;
-                };
-                
-                class Particle {
-                    constructor() {
-                        const colors = [`rgba(255, 255, 255, ${Math.random()*0.2+0.1})`, `rgba(212, 97, 28, ${Math.random()*0.3+0.1})`];
-                        this.color = colors[Math.floor(Math.random() * colors.length)];
-                        this.radius = Math.random() * 2 + 1;
-                        this.x = Math.random() * canvas.width;
-                        this.y = Math.random() * canvas.height;
-                        this.vx = (Math.random() - 0.5) * 0.4;
-                        this.vy = (Math.random() - 0.5) * 0.4;
-                    }
-                    draw() {
-                        ctx.beginPath();
-                        ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
-                        ctx.fillStyle = this.color;
-                        ctx.fill();
-                    }
-                    update() {
-                        this.x += this.vx;
-                        this.y += this.vy;
-                        if (this.x < 0 || this.x > canvas.width) this.vx *= -1;
-                        if (this.y < 0 || this.y > canvas.height) this.vy *= -1;
-                    }
-                }
-
-                for (let i = 0; i < particleCount; i++) particles.push(new Particle());
-                
-                const animate = () => {
-                    ctx.clearRect(0, 0, canvas.width, canvas.height);
-                    particles.forEach(p => { p.update(); p.draw(); });
-                    requestAnimationFrame(animate);
-                };
-
-                window.addEventListener('resize', resizeCanvas);
-                resizeCanvas();
-                animate();
-            }
-        }
-    }
-    </script>
-</body>
-</html>
+                    </template>
