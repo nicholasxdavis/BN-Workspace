@@ -17,12 +17,10 @@ $data = json_decode(file_get_contents('php://input'), true);
 
 try {
     if ($action === 'get_all_data') {
-        // Get Folders
-        $stmt_folders = $pdo->prepare("SELECT * FROM user_note_folders WHERE user_id = ? ORDER BY name ASC");
+        $stmt_folders = $pdo->prepare("SELECT id, name FROM user_note_folders WHERE user_id = ? ORDER BY name ASC");
         $stmt_folders->execute([$user_id]);
         $folders = $stmt_folders->fetchAll();
 
-        // Get Notes
         $stmt_notes = $pdo->prepare("SELECT id, folder_id, title, LEFT(content_text, 100) as snippet, updated_at FROM user_notes WHERE user_id = ? ORDER BY updated_at DESC");
         $stmt_notes->execute([$user_id]);
         $notes = $stmt_notes->fetchAll();
@@ -54,15 +52,14 @@ try {
     elseif ($action === 'update_note') {
         $note_id = $data['id'] ?? 0;
         $title = $data['title'] ?? 'Untitled Note';
-        $content = $data['content'] ?? ''; // HTML content from Quill
-        $content_text = $data['content_text'] ?? ''; // Plain text for snippets
+        $content = $data['content'] ?? '';
+        $content_text = $data['content_text'] ?? '';
         $folder_id = $data['folder_id'] ?? null;
 
         $stmt = $pdo->prepare("UPDATE user_notes SET title = ?, content = ?, content_text = ?, folder_id = ? WHERE id = ? AND user_id = ?");
         $stmt->execute([$title, $content, $content_text, $folder_id, $note_id, $user_id]);
 
         echo json_encode(['success' => true]);
-
     }
     elseif ($action === 'delete_note') {
         $note_id = $data['id'] ?? 0;
@@ -79,12 +76,8 @@ try {
     }
     elseif ($action === 'delete_folder') {
         $folder_id = $data['id'] ?? 0;
-        // Set notes in this folder to have null folder_id
-        $stmt = $pdo->prepare("UPDATE user_notes SET folder_id = NULL WHERE folder_id = ? AND user_id = ?");
-        $stmt->execute([$folder_id, $user_id]);
-        // Delete the folder
-        $stmt = $pdo->prepare("DELETE FROM user_note_folders WHERE id = ? AND user_id = ?");
-        $stmt->execute([$folder_id, $user_id]);
+        $pdo->prepare("UPDATE user_notes SET folder_id = NULL WHERE folder_id = ? AND user_id = ?")->execute([$folder_id, $user_id]);
+        $pdo->prepare("DELETE FROM user_note_folders WHERE id = ? AND user_id = ?")->execute([$folder_id, $user_id]);
         echo json_encode(['success' => true]);
     }
     else {
