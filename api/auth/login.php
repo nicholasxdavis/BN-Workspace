@@ -17,7 +17,7 @@ session_start();
 $host = 'roscwoco0sc8w08kwsko8ko8';
 $db = 'default'; // Using the default database name
 $user = 'mariadb';
-$pass = 'JswmqQf1JDKQD1WE311UPXBBE6NYJv6jRSP91dbkZDYj5sMc5sehC1LQTu';
+$pass = 'JswmqQok4swQf1JDKQD1WE311UPXBBE6NYJv6jRSP91dbkZDYj5sMc5sehC1LQTu';
 $charset = 'utf8mb4';
 $port = 3306;
 
