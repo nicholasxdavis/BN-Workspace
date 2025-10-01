@@ -24,8 +24,181 @@
         .ql-snow .ql-stroke { stroke: var(--text-secondary); }
         .ql-snow .ql-picker-label { color: var(--text-secondary); }
     </style>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            Alpine.data('notesApp', () => ({
+                folders: [],
+                notes: [],
+                activeFolderId: null,
+                activeNote: null,
+                searchTerm: '',
+                isLoading: true,
+                quill: null,
+                isMobile: false,
+
+                async init() {
+                    this.isMobile = window.innerWidth < 768;
+                    window.addEventListener('resize', () => this.isMobile = window.innerWidth < 768);
+                    
+                    this.initParticles();
+                    await this.loadAllData();
+                    this.isLoading = false;
+                },
+
+                async loadAllData() {
+                    try {
+                        const response = await fetch('./notes_api.php?action=get_all_data');
+                        if (!response.ok) throw new Error('Network error');
+                        const data = await response.json();
+                        if (data.success) {
+                            this.folders = data.folders;
+                            this.notes = data.notes;
+                        } else {
+                            throw new Error(data.error);
+                        }
+                    } catch (error) {
+                        console.error('Failed to load data:', error);
+                        alert('Error: Could not load your notes.');
+                    }
+                },
+
+                get filteredNotes() {
+                    let notesInFolder = this.activeFolderId === null ? this.notes : this.notes.filter(n => n.folder_id == this.activeFolderId);
+                    if (!this.searchTerm) return notesInFolder;
+                    const search = this.searchTerm.toLowerCase();
+                    return notesInFolder.filter(note => (note.title && note.title.toLowerCase().includes(search)) || (note.snippet && note.snippet.toLowerCase().includes(search)));
+                },
+
+                setActiveFolder(folderId) {
+                    this.activeFolderId = folderId;
+                    if (this.isMobile) this.activeNote = null;
+                },
+
+                async selectNote(noteId) {
+                    this.isLoading = true;
+                    const response = await fetch(`./notes_api.php?action=get_note&id=${noteId}`);
+                    const data = await response.json();
+                    if (data.success) {
+                        this.activeNote = data.note;
+                        this.$nextTick(() => this.initQuill());
+                    }
+                    this.isLoading = false;
+                },
+
+                initQuill() {
+                    if (this.$refs.editor.innerHTML) { // Clear previous instance if any
+                        this.$refs.editor.innerHTML = '';
+                    }
+                    if (this.quill) { this.quill.off('text-change', this.onQuillChange); }
+
+                    this.quill = new Quill(this.$refs.editor, {
+                        theme: 'snow',
+                        modules: { toolbar: [[{ 'header': [1, 2, false] }], ['bold', 'italic', 'underline'], [{'list': 'ordered'}, {'list': 'bullet'}]] }
+                    });
+                    this.quill.root.innerHTML = this.activeNote.content || '';
+                    
+                    this.onQuillChange = Alpine.debounce(() => this.saveNote(), 500);
+                    this.quill.on('text-change', this.onQuillChange);
+                },
+
+                onQuillChange: null,
+
+                async createNewNote() {
+                    this.isLoading = true;
+                    try {
+                        const response = await fetch('./notes_api.php?action=create_note', {
+                            method: 'POST', headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ title: 'Untitled Note', folder_id: this.activeFolderId })
+                        });
+                        const data = await response.json();
+                        if (data.success) {
+                            await this.loadAllData();
+                            await this.selectNote(data.id);
+                        }
+                    } catch (e) {
+                        alert('Failed to create note.');
+                    } finally {
+                        this.isLoading = false;
+                    }
+                },
+
+                async saveNote() {
+                    if (!this.activeNote || !this.quill) return;
+                    this.activeNote.content = this.quill.root.innerHTML;
+                    this.activeNote.content_text = this.quill.getText();
+                    
+                    await fetch('./notes_api.php?action=update_note', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(this.activeNote)
+                    });
+                    
+                    const noteInList = this.notes.find(n => n.id === this.activeNote.id);
+                    if (noteInList) {
+                        noteInList.title = this.activeNote.title;
+                        noteInList.snippet = this.activeNote.content_text.substring(0, 100);
+                    }
+                },
+                
+                async deleteNote() {
+                    if (!this.activeNote) return;
+                    if (confirm('Are you sure you want to delete this note?')) {
+                        const deletedNoteId = this.activeNote.id;
+                        this.activeNote = null;
+                        this.notes = this.notes.filter(n => n.id !== deletedNoteId);
+                        await fetch('./notes_api.php?action=delete_note', {
+                            method: 'POST', headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ id: deletedNoteId })
+                        });
+                    }
+                },
+
+                async createNewFolder() {
+                    const name = prompt("Enter folder name:", "New Folder");
+                    if (name) {
+                        const response = await fetch('./notes_api.php?action=create_folder', {
+                            method: 'POST', headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ name: name })
+                        });
+                        const data = await response.json();
+                        if(data.success) { this.folders.push({id: data.id, name: data.name}); }
+                    }
+                },
+                
+                initParticles() {
+                    const canvas = document.getElementById('particle-bg');
+                    if (!canvas) return;
+                    const ctx = canvas.getContext('2d');
+                    let particles = [];
+                    const resizeCanvas = () => { canvas.width = window.innerWidth; canvas.height = window.innerHeight; };
+                    class Particle {
+                        constructor() {
+                            const colors = [`rgba(255, 255, 255, ${Math.random()*0.2+0.1})`, `rgba(212, 97, 28, ${Math.random()*0.3+0.1})`];
+                            this.color = colors[Math.floor(Math.random() * colors.length)];
+                            this.radius = Math.random() * 2 + 1;
+                            this.x = Math.random() * canvas.width; this.y = Math.random() * canvas.height;
+                            this.vx = (Math.random() - 0.5) * 0.4; this.vy = (Math.random() - 0.5) * 0.4;
+                        }
+                        draw() { ctx.beginPath(); ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2); ctx.fillStyle = this.color; ctx.fill(); }
+                        update() {
+                            this.x += this.vx; this.y += this.vy;
+                            if (this.x < 0 || this.x > canvas.width) this.vx *= -1;
+                            if (this.y < 0 || this.y > canvas.height) this.vy *= -1;
+                        }
+                    }
+                    for (let i = 0; i < 70; i++) particles.push(new Particle());
+                    const animate = () => {
+                        ctx.clearRect(0, 0, canvas.width, canvas.height);
+                        particles.forEach(p => { p.update(); p.draw(); });
+                        requestAnimationFrame(animate);
+                    };
+                    window.addEventListener('resize', resizeCanvas);
+                    resizeCanvas(); animate();
+                }
+            }));
+        });
+    </script>
 </head>
-<body x-data="notesApp()" x-init="init()" class="h-full flex flex-col">
+<body x-data="notesApp" x-init="init()" class="h-full flex flex-col">
     <canvas id="particle-bg"></canvas>
 
     <div class="flex-1 flex overflow-hidden relative z-10">
@@ -59,3 +232,36 @@
                             <p class="text-xs text-gray-400 truncate mt-1" x-text="note.snippet || 'No additional text'"></p>
                         </div>
                     </template>
+                     <p x-show="filteredNotes.length === 0" class="text-xs text-gray-500 text-center py-4">No notes found.</p>
+                </div>
+            </div>
+        </aside>
+
+        <main class="flex-1 flex flex-col absolute md:relative inset-0 z-10 transition-transform duration-300"
+              :class="{'translate-x-0': activeNote || !isMobile, 'translate-x-full': !activeNote && isMobile}">
+            <template x-if="activeNote">
+                <div class="flex flex-col h-full">
+                    <div class="flex justify-between items-center p-4 border-b border-[var(--border-color)] flex-shrink-0">
+                         <button @click="activeNote = null" class="md:hidden text-gray-300 mr-4"><i class="fas fa-chevron-left"></i> Back</button>
+                        <input type="text" x-model="activeNote.title" @input.debounce.500ms="saveNote()" class="bg-transparent text-xl font-bold w-full outline-none pr-4">
+                        <div class="flex items-center space-x-4">
+                            <button @click="deleteNote()" class="text-gray-400 hover:text-red-500 transition" title="Delete Note"><i class="fas fa-trash"></i></button>
+                        </div>
+                    </div>
+                    <div class="flex-grow min-h-0 relative"><div x-ref="editor" class="h-full"></div></div>
+                </div>
+            </template>
+            <template x-if="!activeNote && !isLoading">
+                <div class="flex-1 flex items-center justify-center text-center text-gray-500 p-8">
+                    <div>
+                        <i class="fas fa-file-alt text-6xl mb-4"></i>
+                        <h2 class="text-2xl font-bold">Select a note</h2>
+                        <p class="mt-2">Choose a note from the list on the left to view or edit it, or create a new one to get started.</p>
+                    </div>
+                </div>
+            </template>
+            <div x-show="isLoading" class="flex-1 flex items-center justify-center"><div class="loader !w-12 !h-12"></div></div>
+        </main>
+    </div>
+</body>
+</html>
