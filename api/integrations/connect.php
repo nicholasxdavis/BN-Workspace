@@ -81,10 +81,34 @@ if ($provider === 'reddit') {
     $auth_url = 'https://www.dropbox.com/oauth2/authorize?' . http_build_query($params);
     header('Location: ' . $auth_url);
     exit;
+    
+} elseif ($provider === 'facebook' || $provider === 'instagram') {
+    $_SESSION['oauth_provider'] = 'meta';
+
+    // Define the required permissions (scopes)
+    $scopes = [
+        'email',
+        'public_profile',
+        'pages_show_list',
+        'pages_read_engagement',
+        'pages_manage_posts'
+    ];
+
+    // Build the Meta (Facebook) Authorization URL
+    $params = [
+        'client_id' => META_APP_ID,
+        'redirect_uri' => META_REDIRECT_URI,
+        'state' => $state,
+        'response_type' => 'code',
+        'scope' => implode(',', $scopes),
+    ];
+
+    $auth_url = 'https://www.facebook.com/v18.0/dialog/oauth?' . http_build_query($params);
+    header('Location: ' . $auth_url);
+    exit;
 }
 
 // Handle any other providers that might be requested
 echo 'Invalid provider specified.';
 exit;
 ?>
-
