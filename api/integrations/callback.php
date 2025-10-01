@@ -94,7 +94,45 @@ if (isset($_GET['code'])) {
         $response = curl_exec($ch);
         curl_close($ch);
         $token_data = json_decode($response, true);
+    
+    // --- Handle Meta (Facebook/Instagram) Token Exchange ---
+    } elseif ($provider === 'meta') {
+        $token_url = 'https://graph.facebook.com/v18.0/oauth/access_token';
+        $post_data = [
+            'client_id' => META_APP_ID,
+            'client_secret' => META_APP_SECRET,
+            'redirect_uri' => META_REDIRECT_URI,
+            'code' => $code,
+        ];
+
+        $ch = curl_init($token_url);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($post_data));
+        $response = curl_exec($ch);
+        curl_close($ch);
+        $token_data = json_decode($response, true);
+        
+        // Exchange short-lived token for a long-lived one
+        if (isset($token_data['access_token'])) {
+             $long_lived_url = 'https://graph.facebook.com/v18.0/oauth/access_token';
+             $long_lived_params = [
+                'grant_type' => 'fb_exchange_token',
+                'client_id' => META_APP_ID,
+                'client_secret' => META_APP_SECRET,
+                'fb_exchange_token' => $token_data['access_token']
+             ];
+             $ch = curl_init($long_lived_url);
+             curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+             curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($long_lived_params));
+             $response = curl_exec($ch);
+             curl_close($ch);
+             $long_lived_data = json_decode($response, true);
+             if(isset($long_lived_data['access_token'])) {
+                $token_data = $long_lived_data; // Overwrite with long-lived token data
+             }
+        }
     }
+
 
     if (isset($token_data['access_token'])) {
         // --- 3. Prepare and Save the Tokens to the Database ---
@@ -118,6 +156,11 @@ if (isset($_GET['code'])) {
              }
         } elseif ($provider === 'notion'){
              $provider_user_id = $token_data['owner']['user']['id'] ?? null;
+        } elseif ($provider === 'meta') {
+            $scope = $token_data['scope'] ?? null;
+            if (isset($token_data['expires_in'])) {
+                $expires_at = (new DateTime())->add(new DateInterval('PT' . $token_data['expires_in'] . 'S'))->format('Y-m-d H:i:s');
+            }
         }
         
         // Unset provider from session after use
@@ -162,4 +205,3 @@ if (isset($_GET['code'])) {
     }
 }
 ?>
-
