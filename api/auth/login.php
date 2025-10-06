@@ -29,81 +29,42 @@ try {
         PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
         PDO::ATTR_EMULATE_PREPARES => false,
     ];
-    
+
     $pdo = new PDO($dsn, $user, $pass, $options);
 } catch (\PDOException $e) {
     echo json_encode(['success' => false, 'message' => 'Database connection failed: ' . $e->getMessage()]);
     exit;
 }
 
-// Check if tables exist, if not create them
-try {
-    // Check if users table exists
-    $tableCheck = $pdo->query("SHOW TABLES LIKE 'users'");
-    if ($tableCheck->rowCount() == 0) {
-        // Create tables
-        $pdo->exec("
-            CREATE TABLE users (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                email VARCHAR(255) NOT NULL UNIQUE,
-                password_hash VARCHAR(255) NOT NULL,
-                full_name VARCHAR(255),
-                role ENUM('admin', 'editor', 'viewer') DEFAULT 'viewer',
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-            );
-            
-            CREATE TABLE settings (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                setting_key VARCHAR(255) NOT NULL UNIQUE,
-                setting_value TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-            );
-            
-            -- Insert default admin user (password: Blacnova2025)
-            INSERT INTO users (email, password_hash, full_name, role) 
-            VALUES ('admin@blacnova.com', '" . password_hash('Blacnova2025', PASSWORD_DEFAULT) . "', 'Admin User', 'admin');
-            
-            -- Insert some default settings
-            INSERT INTO settings (setting_key, setting_value) VALUES 
-            ('site_title', 'Blacnova'),
-            ('site_description', 'Premium Development Services'),
-            ('primary_color', '#d4611c'),
-            ('admin_email', 'admin@blacnova.com');
-        ");
-    }
+// Check for existing session
+if (isset($_COOKIE['session_token'])) {
+    try {
+        $stmt = $pdo->prepare('SELECT u.* FROM users u JOIN user_sessions s ON u.id = s.user_id WHERE s.session_token = ? AND s.expires_at > NOW()');
+        $stmt->execute([$_COOKIE['session_token']]);
+        $user = $stmt->fetch();
 
-    // NEW: Check and create user_integrations table
-    $tableCheck = $pdo->query("SHOW TABLES LIKE 'user_integrations'");
-    if ($tableCheck->rowCount() == 0) {
-        $pdo->exec("
-            CREATE TABLE user_integrations (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                user_id INT NOT NULL,
-                provider VARCHAR(50) NOT NULL,
-                access_token TEXT NOT NULL,
-                refresh_token TEXT,
-                expires_at TIMESTAMP NULL,
-                scope VARCHAR(255),
-                provider_user_id VARCHAR(255),
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-                UNIQUE KEY (user_id, provider)
-            );
-        ");
-    }
+        if ($user) {
+            unset($user['password_hash']);
+            $_SESSION['user_id'] = $user['id'];
+            $_SESSION['email'] = $user['email'];
+            $_SESSION['role'] = $user['role'];
 
-} catch (\PDOException $e) {
-    echo json_encode(['success' => false, 'message' => 'Table creation failed: ' . $e->getMessage()]);
-    exit;
+            echo json_encode([
+                'success' => true,
+                'user' => $user
+            ]);
+            exit;
+        }
+    } catch (\PDOException $e) {
+        // Fail silently and proceed to login form
+    }
 }
 
 // Get POST data
 $data = json_decode(file_get_contents('php://input'), true);
 $email = $data['email'] ?? '';
 $password = $data['password'] ?? '';
+$rememberMe = $data['rememberMe'] ?? false;
 
 // Validate input
 if (empty($email) || empty($password)) {
@@ -116,17 +77,46 @@ try {
     $stmt = $pdo->prepare('SELECT * FROM users WHERE email = ?');
     $stmt->execute([$email]);
     $user = $stmt->fetch();
-    
+
     if ($user && password_verify($password, $user['password_hash'])) {
         // Successful login
         unset($user['password_hash']); // Don't send password back
-        
+
+        // Create session
+        $session_token = bin2hex(random_bytes(32));
+        $remember_token = null;
+        $expires_at = date('Y-m-d H:i:s', strtotime('+1 hour'));
+
+        if ($rememberMe) {
+            $remember_token = bin2hex(random_bytes(32));
+            $expires_at = date('Y-m-d H:i:s', strtotime('+30 days'));
+        }
+
+        // Store session in the database
+        $stmt = $pdo->prepare('INSERT INTO user_sessions (user_id, session_token, remember_token, expires_at) VALUES (?, ?, ?, ?)');
+        $stmt->execute([$user['id'], $session_token, $remember_token, $expires_at]);
+
+        // Set session cookie
+        $cookie_options = [
+            'expires' => $rememberMe ? time() + (86400 * 30) : 0, // 30 days or session
+            'path' => '/',
+            'domain' => '.blacnova.net', // Set your domain here to share cookie across subdomains
+            'secure' => true,
+            'httponly' => true,
+            'samesite' => 'Lax'
+        ];
+        setcookie('session_token', $session_token, $cookie_options);
+
+        if ($rememberMe) {
+            setcookie('remember_token', $remember_token, $cookie_options);
+        }
+
         $_SESSION['user_id'] = $user['id'];
         $_SESSION['email'] = $user['email'];
         $_SESSION['role'] = $user['role'];
-        
+
         echo json_encode([
-            'success' => true, 
+            'success' => true,
             'user' => $user
         ]);
     } else {
